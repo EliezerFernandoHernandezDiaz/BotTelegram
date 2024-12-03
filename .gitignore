@@ -1,1 +1,8 @@
-.gitignore
+# Ignorar todos los archivos por defecto
+*
+
+# Excepto los que quieres subir
+!.gitignore
+!Procfile
+!botTelegram.py
+!requirements.txt

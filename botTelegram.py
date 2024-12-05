@@ -14,15 +14,17 @@ def download_content(url, user_id, file_format):
         ydl_opts = {
             'format': 'bestaudio/best' if file_format == 'mp3' else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
             'outtmpl': output_name,
-            'postprocessors': [
+        }
+
+        # Agregar postprocesadores solo si es MP3
+        if file_format == 'mp3':
+            ydl_opts['postprocessors'] = [
                 {
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': 'mp3',
                     'preferredquality': '192',
                 }
-            ] if file_format == 'mp3' else None,
-            'merge_output_format': 'mp4' if file_format == 'mp4' else None,
-        }
+            ]
 
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)

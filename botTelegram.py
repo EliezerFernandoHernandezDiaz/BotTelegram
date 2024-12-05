@@ -77,7 +77,7 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Configuración principal del bot
 def main():
-    application = Application.builder().token("TU_TOKEN_DEL_BOT").build()
+    application = Application.builder().token("7693751923:AAH9i-62eI0I4lrYWs2eNKy7hF8Vi5c2EUA").build()
 
     # Handlers para comandos
     application.add_handler(CommandHandler("start", start))

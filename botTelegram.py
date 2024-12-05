@@ -1,4 +1,3 @@
-
 import os
 import uuid
 from telegram import Update
@@ -32,8 +31,8 @@ def download_content(url, user_id, file_format):
                 downloaded_file = downloaded_file.replace('.webm', '.mp3').replace('.m4a', '.mp3')
             return downloaded_file
     except Exception as e:
-        print(f"Error al descargar el contenido: {e}")
-        return None
+        print(f"Error en yt-dlp: {e}")
+        raise e
 
 # Handler para el comando /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -59,17 +58,26 @@ async def mp4(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     user_id = update.message.from_user.id
-    file_format = context.user_data.get('format')  # Obtiene el formato seleccionado por el usuario
+    file_format = context.user_data.get('format')
 
     if not file_format:
         await update.message.reply_text("Por favor selecciona primero un formato usando /mp3 o /mp4.")
         return
 
+    print("URL recibida:", url)
+    print("Formato seleccionado:", file_format)
+
     if "youtube.com" in url or "youtu.be" in url:
         await update.message.reply_text(f"Descargando el contenido como {file_format.upper()}, por favor espera...")
         file_path = download_content(url, user_id, file_format)
         if file_path:
+            print("Archivo descargado:", file_path)
             try:
+                # Verifica el tamaño del archivo antes de enviarlo
+                if os.path.getsize(file_path) > 50 * 1024 * 1024:  # Límite de 50 MB
+                    await update.message.reply_text("El archivo es demasiado grande para enviarlo por Telegram.")
+                    return
+
                 if file_format == 'mp3':
                     await context.bot.send_audio(chat_id=update.effective_chat.id, audio=open(file_path, 'rb'))
                 else:
@@ -77,7 +85,7 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             finally:
                 os.remove(file_path)  # Elimina el archivo después de enviarlo
         else:
-            await update.message.reply_text("No se pudo descargar el contenido. Verifica el enlace e inténtalo nuevamente.")
+            await update.message.reply_text("No se pudo descargar el contenido. Verifica el enlace.")
     else:
         await update.message.reply_text("Por favor, envía un enlace válido de YouTube.")
 

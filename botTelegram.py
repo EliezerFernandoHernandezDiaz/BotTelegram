@@ -7,18 +7,32 @@ from yt_dlp import YoutubeDL
 # Función para descargar el contenido
 def download_content(url, user_id, file_format):
     try:
-        unique_name = f"{user_id}_{uuid.uuid4()}.{file_format}"  # Archivo único por usuario
+        unique_name = f"{user_id}_{uuid.uuid4()}"  # Archivo único por usuario, sin extensión
+        output_name = f"{unique_name}.%(ext)s"  # Plantilla para el nombre de archivo
+        
         ydl_opts = {
             'format': 'bestaudio/best' if file_format == 'mp3' else 'mp4',
-            'outtmpl': unique_name,
-            'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3'}] if file_format == 'mp3' else None,
+            'outtmpl': output_name,
+            'postprocessors': [
+                {
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192'
+                }
+            ] if file_format == 'mp3' else None,
         }
+
         with YoutubeDL(ydl_opts) as ydl:
-            ydl.extract_info(url, download=True)
-            return unique_name  # Retorna el nombre único del archivo descargado
+            info = ydl.extract_info(url, download=True)
+            # Verifica el nombre del archivo final después de la descarga
+            downloaded_file = ydl.prepare_filename(info)
+            if file_format == 'mp3':
+                downloaded_file = downloaded_file.replace('.webm', '.mp3').replace('.m4a', '.mp3')
+            return downloaded_file  # Retorna el archivo final descargado
     except Exception as e:
         print(f"Error al descargar el contenido: {e}")
         return None
+
 
 
 # Handler para el comando de /start
@@ -43,14 +57,13 @@ async def mp4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Envia un enlace de YouTube para comenzar la descarga del video como MP4.")
 
 
-# Handler para manejar los enlaces recibidos
 async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     user_id = update.message.from_user.id  # ID único del usuario
     file_format = context.user_data.get('format')  # Obtiene el formato del comando seleccionado
 
     if not file_format:
-        await update.message.reply_text("Por favor selecciona primero un comando (/mp3 o /mp4).")
+        await update.message.reply_text("Por favor selecciona primeramente un comando (/mp3 o /mp4).")
         return
 
     if "youtube.com" in url or "youtu.be" in url:

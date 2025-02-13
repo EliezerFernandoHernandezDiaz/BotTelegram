@@ -98,21 +98,6 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "youtube.com" in url or "youtu.be" in url:
         await update.message.reply_text(f"Descargando {file_format.upper()}, por favor espera...")
         file_path = download_content(url, user_id, file_format)
-<<<<<<< HEAD
-=======
-        
-       if file_path and os.path.exists(file_path):
-    print(f"Archivo final disponible: {file_path}")
-    await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
-    os.remove(file_path)  # Eliminar el archivo después de enviarlo
-else:
-    await update.message.reply_text("No se pudo procesar el video. Inténtalo de nuevo.")
-
-            try:
-                if os.path.getsize(file_path) > 50 * 1024 * 1024:
-                    await update.message.reply_text("El archivo es demasiado grande para enviarlo por Telegram.")
-                    return
->>>>>>> acf5d1008b98184572e8e12987e0b5c1f8f9b292
 
         if file_path and os.path.exists(file_path):  # 🔹 Verificar si el archivo existe antes de enviarlo
             print(f"Archivo final disponible: {file_path}")

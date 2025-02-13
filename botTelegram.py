@@ -5,78 +5,76 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from yt_dlp import YoutubeDL
 from TikTokApi import TikTokApi
 
-#Creando funcion para descargar tik toks sin marca de agua
+# Función para descargar TikToks sin marca de agua
 def descargaTiktok(url, user_id):
-  try:
-            api = TikTokApi.get_instance()
-            video_data=api.video(url).bytes()
-            unique_name= f"{user_id}_{uuid.uuid4()}.mp4"
-            with open(unique_name, 'wb') as videofile:
-                videofile.write(video_data)
-                return unique_name
-  except Exception as e:
-            print(f"Error al descargar el video de Tik TOK: {e}")
-
+    try:
+        api = TikTokApi()
+        video_data = api.video(url).bytes()
+        unique_name = f"{user_id}_{uuid.uuid4()}.mp4"
+        with open(unique_name, 'wb') as videofile:
+            videofile.write(video_data)
+        return unique_name
+    except Exception as e:
+        print(f"Error al descargar el video de TikTok: {e}")
+        return None
 
 # Función para descargar contenido en MP3 o MP4
 def download_content(url, user_id, file_format):
     try:
         unique_name = f"{user_id}_{uuid.uuid4()}"  # Nombre único sin extensión
         output_name = f"{unique_name}.%(ext)s"
-        
-        # Configura las opciones según el formato
+
         ydl_opts = {
-            'format': 'bestaudio/best' if file_format == 'mp3' else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+            'format': 'bestaudio/best' if file_format == 'mp3' else 'bestvideo+bestaudio/best',
             'outtmpl': output_name,
         }
 
-        # Agregar postprocesadores solo si es MP3
+        # Agregar postprocesadores según el formato
         if file_format == 'mp3':
             ydl_opts['postprocessors'] = [
-                {
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }
+                {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}
+            ]
+        else:  # Para MP4
+            ydl_opts['postprocessors'] = [
+                {'key': 'FFmpegVideoRemuxer', 'preferedformat': 'mp4'}
             ]
 
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             downloaded_file = ydl.prepare_filename(info)
+            
+            # Si es MP3, ajustar nombre del archivo
             if file_format == 'mp3':
                 downloaded_file = downloaded_file.replace('.webm', '.mp3').replace('.m4a', '.mp3')
+
             return downloaded_file
     except Exception as e:
         print(f"Error en yt-dlp: {e}")
-        raise e
+        return None
 
-# Handler para el comando /start
+# Handlers de Telegram
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "¡Hola! Este bot puede descargar videos de YouTube en MP3 o MP4. y TikTok\n"
+        "¡Hola! Este bot puede descargar videos de YouTube en MP3 o MP4 y TikTok.\n"
         "Usa uno de los comandos:\n"
         "/mp3 - Para descargar en formato MP3 (audio).\n"
         "/mp4 - Para descargar en formato MP4 (video).\n"
-        "/tiktok - Para descargar videos de TikTok sin marca de agua \n"
+        "/tiktok - Para descargar videos de TikTok sin marca de agua.\n"
         "Luego, envía el enlace del video."
     )
- 
-# Handler para descargar videos de TikTok
+
 async def tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['format']= 'tiktok' #Guarda la preferencia del usuario
+    context.user_data['format'] = 'tiktok'
     await update.message.reply_text("Has seleccionado TikTok. Ahora envía un enlace de TikTok.")
 
-# Handler para seleccionar MP3
 async def mp3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['format'] = 'mp3'  # Guarda la preferencia del usuario
+    context.user_data['format'] = 'mp3'
     await update.message.reply_text("Has seleccionado MP3. Ahora envía un enlace de YouTube.")
 
-# Handler para seleccionar MP4
 async def mp4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['format'] = 'mp4'  # Guarda la preferencia del usuario
+    context.user_data['format'] = 'mp4'
     await update.message.reply_text("Has seleccionado MP4. Ahora envía un enlace de YouTube.")
 
-# Handler para manejar el enlace
 async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     user_id = update.message.from_user.id
@@ -90,59 +88,46 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print("Formato seleccionado:", file_format)
 
     if "youtube.com" in url or "youtu.be" in url:
-        await update.message.reply_text(f"Descargando el contenido como {file_format.upper()}, por favor espera...")
+        await update.message.reply_text(f"Descargando {file_format.upper()}, por favor espera...")
         file_path = download_content(url, user_id, file_format)
-        if file_path:
+        
+        if file_path and os.path.exists(file_path):
             print("Archivo descargado:", file_path)
             try:
-                # Verifica el tamaño del archivo que no sea mayor a 1 gb antes de enviarlo
-                if os.path.getsize(file_path) > 1_000_000_000:
+                if os.path.getsize(file_path) > 50 * 1024 * 1024:
                     await update.message.reply_text("El archivo es demasiado grande para enviarlo por Telegram.")
                     return
 
                 if file_format == 'mp3':
                     await context.bot.send_audio(chat_id=update.effective_chat.id, audio=open(file_path, 'rb'))
+                else:
                     await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
             finally:
-                os.remove(file_path)  # Elimina el archivo después de enviarlo
+                os.remove(file_path)
         else:
             await update.message.reply_text("No se pudo descargar el contenido. Verifica el enlace.")
     
-    #agregando un nuevo elif para manejar la descarga de tiktoks sin marca de agua
     elif "tiktok.com" in url:
-        await update.message.reply_text(f"Descargando el contenido de TikTok, por favor espera...")
+        await update.message.reply_text("Descargando video de TikTok, por favor espera...")
         file_path = descargaTiktok(url, user_id)
-        if file_path:
+        
+        if file_path and os.path.exists(file_path):
             print("Archivo descargado:", file_path)
-            try:
-                # Verifica el tamaño del archivo que no sea mayor a 1 gb antes de enviarlo
-                if os.path.getsize(file_path) > 1_000_000_000:
-                    await update.message.reply_text("El archivo es demasiado grande para enviarlo por Telegram.")
-                    return
-
-                await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
-            finally:
-                os.remove(file_path)  # Elimina el archivo después de enviarlo
+            await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
+            os.remove(file_path)
         else:
-            await update.message.reply_text("No se pudo descargar el contenido. Verifica el enlace.")
-    else:
-        await update.message.reply_text("Por favor, envía un enlace válido de TikTok.")
-
-
-# Configuración principal del bot
+            await update.message.reply_text("No se pudo descargar el video de TikTok.")
+    
 def main():
-    # Crea la aplicación
     application = Application.builder().token("7693751923:AAH9i-62eI0I4lrYWs2eNKy7hF8Vi5c2EUA").build()
-
-    # Agrega los comandos y handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("mp3", mp3))
     application.add_handler(CommandHandler("mp4", mp4))
     application.add_handler(CommandHandler("tiktok", tiktok))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_handler))
-
-    # Ejecuta el bot
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
+
+

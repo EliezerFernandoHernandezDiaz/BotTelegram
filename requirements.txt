@@ -4,3 +4,5 @@ yt-dlp==2024.11.18
 TikTokApi
 imageio[ffmpeg]
 TikTokApi
+playwright
+playwright

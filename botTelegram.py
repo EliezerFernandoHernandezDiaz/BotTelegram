@@ -4,19 +4,26 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from yt_dlp import YoutubeDL
 from TikTokApi import TikTokApi
+import asyncio
 
 # Función para descargar TikToks sin marca de agua
-def descargaTiktok(url, user_id):
+import asyncio  # Importar asyncio para manejar coroutines
+
+async def descargaTiktok(url, user_id):
     try:
         api = TikTokApi()
-        video_data = api.video(url).bytes()
+        video = api.video(url)
+        video_data = await video.bytes()  # AWAIT aquí para esperar la descarga
         unique_name = f"{user_id}_{uuid.uuid4()}.mp4"
+        
         with open(unique_name, 'wb') as videofile:
             videofile.write(video_data)
+
         return unique_name
     except Exception as e:
         print(f"Error al descargar el video de TikTok: {e}")
         return None
+
 
 # Función para descargar contenido en MP3 o MP4
 def download_content(url, user_id, file_format):
@@ -109,7 +116,7 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif "tiktok.com" in url:
         await update.message.reply_text("Descargando video de TikTok, por favor espera...")
-        file_path = descargaTiktok(url, user_id)
+        file_path = await descargaTiktok(url, user_id) # Llamada asíncrona con await
         
         if file_path and os.path.exists(file_path):
             print("Archivo descargado:", file_path)

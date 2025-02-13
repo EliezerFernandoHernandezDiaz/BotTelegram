@@ -12,8 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app/
 
 # Da permisos de ejecución al script de instalación de FFmpeg
-RUN chmod +x /app/install_ffmpeg.sh
-RUN ./install_ffmpeg.sh
-
+RUN chmod +x install_ffmpeg.sh && bash install_ffmpeg.sh
 # Define el comando de inicio del bot (modifica según tu caso)
 CMD ["python", "botTelegram.py"]

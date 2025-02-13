@@ -1,21 +1,19 @@
 import os
 import uuid
+import asyncio  # Necesario para manejar coroutines
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from yt_dlp import YoutubeDL
 from TikTokApi import TikTokApi
-import asyncio
 
-# Función para descargar TikToks sin marca de agua
-import asyncio  # Importar asyncio para manejar coroutines
-
+# Función asíncrona para descargar TikToks sin marca de agua
 async def descargaTiktok(url, user_id):
     try:
         api = TikTokApi()
         video = api.video(url)
-        video_data = await video.bytes()  # AWAIT aquí para esperar la descarga
+        video_data = await video.bytes()  # ✅ AWAIT necesario para la descarga
+
         unique_name = f"{user_id}_{uuid.uuid4()}.mp4"
-        
         with open(unique_name, 'wb') as videofile:
             videofile.write(video_data)
 
@@ -24,7 +22,6 @@ async def descargaTiktok(url, user_id):
         print(f"Error al descargar el video de TikTok: {e}")
         return None
 
-
 # Función para descargar contenido en MP3 o MP4
 def download_content(url, user_id, file_format):
     try:
@@ -32,24 +29,28 @@ def download_content(url, user_id, file_format):
         output_name = f"{unique_name}.%(ext)s"
 
         ydl_opts = {
-            'format': 'bestaudio/best' if file_format == 'mp3' else 'bestvideo+bestaudio/best',
+            'format': 'bestaudio/best' if file_format == 'mp3' else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
             'outtmpl': output_name,
+            'postprocessors': [],
         }
 
-        # Agregar postprocesadores según el formato
+        # Agregar postprocesador para MP3
         if file_format == 'mp3':
-            ydl_opts['postprocessors'] = [
+            ydl_opts['postprocessors'].append(
                 {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}
-            ]
+            )
         else:  # Para MP4
-            ydl_opts['postprocessors'] = [
+            ydl_opts['postprocessors'].append(
                 {'key': 'FFmpegVideoRemuxer', 'preferedformat': 'mp4'}
-            ]
+            )
 
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             downloaded_file = ydl.prepare_filename(info)
             
+            # Log para verificar el nombre del archivo final
+            print(f"Archivo descargado y convertido a MP4: {downloaded_file}")
+
             # Si es MP3, ajustar nombre del archivo
             if file_format == 'mp3':
                 downloaded_file = downloaded_file.replace('.webm', '.mp3').replace('.m4a', '.mp3')
@@ -97,27 +98,23 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "youtube.com" in url or "youtu.be" in url:
         await update.message.reply_text(f"Descargando {file_format.upper()}, por favor espera...")
         file_path = download_content(url, user_id, file_format)
-        
-        if file_path and os.path.exists(file_path):
-            print("Archivo descargado:", file_path)
-            try:
-                if os.path.getsize(file_path) > 50 * 1024 * 1024:
-                    await update.message.reply_text("El archivo es demasiado grande para enviarlo por Telegram.")
-                    return
 
-                if file_format == 'mp3':
-                    await context.bot.send_audio(chat_id=update.effective_chat.id, audio=open(file_path, 'rb'))
-                else:
-                    await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
-            finally:
-                os.remove(file_path)
+        if file_path and os.path.exists(file_path):  # 🔹 Verificar si el archivo existe antes de enviarlo
+            print(f"Archivo final disponible: {file_path}")
+            
+            if file_format == 'mp3':
+                await context.bot.send_audio(chat_id=update.effective_chat.id, audio=open(file_path, 'rb'))
+            else:
+                await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
+
+            os.remove(file_path)  # 🔹 Eliminar archivo después de enviarlo
         else:
-            await update.message.reply_text("No se pudo descargar el contenido. Verifica el enlace.")
-    
+            await update.message.reply_text("No se pudo procesar el video. Inténtalo de nuevo.")
+
     elif "tiktok.com" in url:
         await update.message.reply_text("Descargando video de TikTok, por favor espera...")
-        file_path = await descargaTiktok(url, user_id) # Llamada asíncrona con await
-        
+        file_path = await descargaTiktok(url, user_id)  # ✅ AWAIT necesario
+
         if file_path and os.path.exists(file_path):
             print("Archivo descargado:", file_path)
             await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
@@ -136,5 +133,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

@@ -9,18 +9,24 @@ from TikTokApi import TikTokApi
 # Función asíncrona para descargar TikToks sin marca de agua
 async def descargaTiktok(url, user_id):
     try:
+        print("🔹 Iniciando descarga de TikTok:", url)  # Log para ver si entra a la función
+
         api = TikTokApi()
         video = api.video(url)
+
+        print("🔹 Obteniendo bytes del video...")  # Log antes de descargar los bytes
         video_data = await video.bytes()  # ✅ AWAIT necesario para la descarga
 
         unique_name = f"{user_id}_{uuid.uuid4()}.mp4"
         with open(unique_name, 'wb') as videofile:
             videofile.write(video_data)
 
+        print(f"✅ Video de TikTok guardado como: {unique_name}")  # Log confirmando que se guardó
         return unique_name
     except Exception as e:
-        print(f"Error al descargar el video de TikTok: {e}")
+        print(f"❌ Error en descargaTiktok: {e}")  # Log de error si la API falla
         return None
+
 
 # Función para descargar contenido en MP3 o MP4
 def download_content(url, user_id, file_format):
@@ -112,16 +118,24 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("No se pudo procesar el video. Inténtalo de nuevo.")
 
     elif "tiktok.com" in url:
-        await update.message.reply_text("Descargando video de TikTok, por favor espera...")
-        file_path = await descargaTiktok(url, user_id)  # ✅ AWAIT necesario
-
-        if file_path and os.path.exists(file_path):
-            print("Archivo descargado:", file_path)
-            await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
-            os.remove(file_path)
-        else:
-            await update.message.reply_text("No se pudo descargar el video de TikTok.")
+     print("🔹 Recibido enlace de TikTok:", url)  # Agregar log para verificar el enlace recibido
+    await update.message.reply_text("Descargando video de TikTok, por favor espera...")
     
+    file_path = await descargaTiktok(url, user_id)  # ✅ AWAIT necesario
+    
+    if file_path:
+        print(f"✅ Video de TikTok descargado: {file_path}")  # Log para ver si el video se guardó correctamente
+        
+        if os.path.exists(file_path):  # Verificar si el archivo existe antes de enviarlo
+            await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
+            os.remove(file_path)  # Borrar archivo después de enviarlo
+        else:
+            print("❌ Error: No se encontró el archivo después de la descarga.")  # Agregar error en la consola
+            await update.message.reply_text("Hubo un problema al procesar el video de TikTok.")
+    else:
+        print("❌ Error: La descarga de TikTok falló.")  # Indicar que la descarga falló
+        await update.message.reply_text("No se pudo descargar el video de TikTok. Verifica el enlace e inténtalo nuevamente.")
+
 def main():
     application = Application.builder().token("7693751923:AAH9i-62eI0I4lrYWs2eNKy7hF8Vi5c2EUA").build()
     application.add_handler(CommandHandler("start", start))

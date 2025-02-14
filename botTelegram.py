@@ -5,28 +5,29 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from yt_dlp import YoutubeDL
 from TikTokApi import TikTokApi
-import random
+from playwright.async_api import async_playwright  # 🔹 Playwright debe ser asíncrono
 
 # Función asíncrona para descargar TikToks sin marca de agua
 async def descargaTiktok(url, user_id):
-   try:
+    try:
         print("🔹 Iniciando descarga de TikTok:", url)
 
-        # Iniciar TikTokApi con Playwright
-        async with TikTokApi() as api:
-            video = await api.video(url)
+        # Iniciar Playwright manualmente
+        async with async_playwright() as p:
+            api = TikTokApi(p)
+            video = await api.video(url)  # ✅ Se debe usar await
 
             # Descargar los bytes del video
-            video_data = await video.bytes()
+            video_data = await video.bytes()  # ✅ Se debe usar await
 
-            # Guardar el archivo con un nombre único
-            unique_name = f"{user_id}_{random.randint(1000, 9999)}.mp4"
+            # Generar un nombre de archivo único
+            unique_name = f"{user_id}_{uuid.uuid4()}.mp4"
             with open(unique_name, 'wb') as videofile:
                 videofile.write(video_data)
 
             print(f"✅ Video de TikTok guardado como: {unique_name}")
             return unique_name
-   except Exception as e:
+    except Exception as e:
         print(f"❌ Error en descargaTiktok: {e}")
         return None
 
@@ -49,23 +50,25 @@ def download_content(url, user_id, file_format):
             )
         else:  # Para MP4
             ydl_opts['postprocessors'].append(
-                {'key': 'FFmpegVideoRemuxer', 'preferedformat': 'mp4'}
+                {'key': 'FFmpegVideoRemuxer', 'preferredformat': 'mp4'}  # 🔹 Se corrigió el error de "preferedformat"
             )
 
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             downloaded_file = ydl.prepare_filename(info)
-            
-            # Log para verificar el nombre del archivo final
-            print(f"Archivo descargado y convertido a MP4: {downloaded_file}")
 
-            # Si es MP3, ajustar nombre del archivo
+            # Log para verificar el nombre del archivo final
+            print(f"✅ Archivo descargado y convertido a {file_format.upper()}: {downloaded_file}")
+
+            # Ajustar el nombre del archivo si es MP3 o MP4
             if file_format == 'mp3':
                 downloaded_file = downloaded_file.replace('.webm', '.mp3').replace('.m4a', '.mp3')
+            elif file_format == 'mp4':
+                downloaded_file = downloaded_file.replace('.webm', '.mp4').replace('.mkv', '.mp4')
 
             return downloaded_file
     except Exception as e:
-        print(f"Error en yt-dlp: {e}")
+        print(f"❌ Error en yt-dlp: {e}")
         return None
 
 # Handlers de Telegram
@@ -100,43 +103,44 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Por favor selecciona primero un formato usando /mp3, /mp4 o /tiktok.")
         return
 
-    print("URL recibida:", url)
-    print("Formato seleccionado:", file_format)
+    print("🔹 URL recibida:", url)
+    print("🔹 Formato seleccionado:", file_format)
 
     if "youtube.com" in url or "youtu.be" in url:
         await update.message.reply_text(f"Descargando {file_format.upper()}, por favor espera...")
+        
         file_path = download_content(url, user_id, file_format)
 
-        if file_path and os.path.exists(file_path):  # 🔹 Verificar si el archivo existe antes de enviarlo
-            print(f"Archivo final disponible: {file_path}")
-            
+        if file_path and os.path.exists(file_path):
+            print(f"✅ Archivo final disponible: {file_path}")
+
             if file_format == 'mp3':
                 await context.bot.send_audio(chat_id=update.effective_chat.id, audio=open(file_path, 'rb'))
             else:
                 await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
 
-            os.remove(file_path)  # 🔹 Eliminar archivo después de enviarlo
+            os.remove(file_path)
         else:
             await update.message.reply_text("No se pudo procesar el video. Inténtalo de nuevo.")
 
     elif "tiktok.com" in url:
-     print("🔹 Recibido enlace de TikTok:", url)  # Agregar log para verificar el enlace recibido
-    await update.message.reply_text("Descargando video de TikTok, por favor espera...")
-    
-    file_path = await descargaTiktok(url, user_id)  # ✅ AWAIT necesario
-    
-    if file_path:
-        print(f"✅ Video de TikTok descargado: {file_path}")  # Log para ver si el video se guardó correctamente
-        
-        if os.path.exists(file_path):  # Verificar si el archivo existe antes de enviarlo
-            await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
-            os.remove(file_path)  # Borrar archivo después de enviarlo
+        print("🔹 Recibido enlace de TikTok:", url)
+        await update.message.reply_text("Descargando video de TikTok, por favor espera...")
+
+        file_path = await descargaTiktok(url, user_id)  # ✅ Ahora sí con await
+
+        if file_path:
+            print(f"✅ Video de TikTok descargado: {file_path}")
+
+            if os.path.exists(file_path):
+                await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
+                os.remove(file_path)
+            else:
+                print("❌ Error: No se encontró el archivo después de la descarga.")
+                await update.message.reply_text("Hubo un problema al procesar el video de TikTok.")
         else:
-            print("❌ Error: No se encontró el archivo después de la descarga.")  # Agregar error en la consola
-            await update.message.reply_text("Hubo un problema al procesar el video de TikTok.")
-    else:
-        print("❌ Error: La descarga de TikTok falló.")  # Indicar que la descarga falló
-        await update.message.reply_text("No se pudo descargar el video de TikTok. Verifica el enlace e inténtalo nuevamente.")
+            print("❌ Error: La descarga de TikTok falló.")
+            await update.message.reply_text("No se pudo descargar el video de TikTok. Verifica el enlace e inténtalo nuevamente.")
 
 def main():
     application = Application.builder().token("7693751923:AAH9i-62eI0I4lrYWs2eNKy7hF8Vi5c2EUA").build()

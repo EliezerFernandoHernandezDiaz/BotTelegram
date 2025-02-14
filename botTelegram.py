@@ -1,11 +1,11 @@
 import os
 import uuid
-import asyncio
+import asyncio  # Necesario para manejar coroutines
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from yt_dlp import YoutubeDL
 from TikTokApi import TikTokApi
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright  # 🔹 Playwright debe ser asíncrono
 
 # Función asíncrona para descargar TikToks sin marca de agua
 async def descargaTiktok(url, user_id):
@@ -14,11 +14,11 @@ async def descargaTiktok(url, user_id):
 
         # Iniciar Playwright manualmente
         async with async_playwright() as p:
-            api = await TikTokApi.create(playwright=p)
-            video = await api.video(url)
+            api = TikTokApi(p)
+            video = await api.video(url)  # ✅ Se debe usar await
 
             # Descargar los bytes del video
-            video_data = await video.bytes()
+            video_data = await video.bytes()  # ✅ Se debe usar await
 
             # Generar un nombre de archivo único
             unique_name = f"{user_id}_{uuid.uuid4()}.mp4"
@@ -30,6 +30,7 @@ async def descargaTiktok(url, user_id):
     except Exception as e:
         print(f"❌ Error en descargaTiktok: {e}")
         return None
+
 
 # Función para descargar contenido en MP3 o MP4
 def download_content(url, user_id, file_format):
@@ -65,6 +66,7 @@ def download_content(url, user_id, file_format):
     except Exception as e:
         print(f"❌ Error en yt-dlp: {e}")
         return None
+
 
 # Handlers de Telegram
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -122,7 +124,7 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("🔹 Recibido enlace de TikTok:", url)
         await update.message.reply_text("Descargando video de TikTok, por favor espera...")
 
-        file_path = await descargaTiktok(url, user_id)
+        file_path = await descargaTiktok(url, user_id)  # ✅ Ahora sí con await
 
         if file_path:
             print(f"✅ Video de TikTok descargado: {file_path}")

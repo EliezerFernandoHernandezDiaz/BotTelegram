@@ -5,28 +5,30 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from yt_dlp import YoutubeDL
 from TikTokApi import TikTokApi
+import random
 
 # Función asíncrona para descargar TikToks sin marca de agua
 async def descargaTiktok(url, user_id):
-    try:
-        print("🔹 Iniciando descarga de TikTok:", url)  # Log para ver si entra a la función
+   try:
+        print("🔹 Iniciando descarga de TikTok:", url)
 
-        api = TikTokApi()
-        video = api.video(url)
+        # Iniciar TikTokApi con Playwright
+        async with TikTokApi() as api:
+            video = await api.video(url)
 
-        print("🔹 Obteniendo bytes del video...")  # Log antes de descargar los bytes
-        video_data = await video.bytes()  # ✅ AWAIT necesario para la descarga
+            # Descargar los bytes del video
+            video_data = await video.bytes()
 
-        unique_name = f"{user_id}_{uuid.uuid4()}.mp4"
-        with open(unique_name, 'wb') as videofile:
-            videofile.write(video_data)
+            # Guardar el archivo con un nombre único
+            unique_name = f"{user_id}_{random.randint(1000, 9999)}.mp4"
+            with open(unique_name, 'wb') as videofile:
+                videofile.write(video_data)
 
-        print(f"✅ Video de TikTok guardado como: {unique_name}")  # Log confirmando que se guardó
-        return unique_name
-    except Exception as e:
-        print(f"❌ Error en descargaTiktok: {e}")  # Log de error si la API falla
+            print(f"✅ Video de TikTok guardado como: {unique_name}")
+            return unique_name
+   except Exception as e:
+        print(f"❌ Error en descargaTiktok: {e}")
         return None
-
 
 # Función para descargar contenido en MP3 o MP4
 def download_content(url, user_id, file_format):

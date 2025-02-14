@@ -3,6 +3,5 @@ pytube==15.0.0
 yt-dlp==2024.11.18
 TikTokApi
 imageio[ffmpeg]
-TikTokApi=2022.7.6
 playwright
-playwright
+TikTokApi==7.0.0

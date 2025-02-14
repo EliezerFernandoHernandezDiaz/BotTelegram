@@ -8,12 +8,15 @@ WORKDIR /app
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Instalar Playwright y sus navegadores
+RUN pip install playwright
+RUN playwright install --with-deps
+
 # Copia los archivos de la aplicación
 COPY . /app/
 
-# Da permisos de ejecución al script de instalación de FFmpeg
-RUN chmod +x install_ffmpeg.sh && bash install_ffmpeg.sh
+# Da permisos de ejecución al script de instalación de FFmpeg y lo ejecuta
+RUN chmod +x /app/install_ffmpeg.sh && /bin/bash /app/install_ffmpeg.sh
 
-RUN pip install playwright && playwright install
-# Define el comando de inicio del bot (modifica según tu caso)
+# Define el comando de inicio del bot
 CMD ["python", "botTelegram.py"]

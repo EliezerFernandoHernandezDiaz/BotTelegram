@@ -1,11 +1,11 @@
 import os
 import uuid
-import asyncio  # Necesario para manejar coroutines
+import asyncio
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from yt_dlp import YoutubeDL
 from TikTokApi import TikTokApi
-from playwright.async_api import async_playwright  # 🔹 Playwright debe ser asíncrono
+from playwright.async_api import async_playwright
 
 # Función asíncrona para descargar TikToks sin marca de agua
 async def descargaTiktok(url, user_id):
@@ -14,11 +14,11 @@ async def descargaTiktok(url, user_id):
 
         # Iniciar Playwright manualmente
         async with async_playwright() as p:
-            api = TikTokApi(p)
-            video = await api.video(url)  # ✅ Se debe usar await
+            api = await TikTokApi.create(playwright=p)
+            video = await api.video(url)
 
             # Descargar los bytes del video
-            video_data = await video.bytes()  # ✅ Se debe usar await
+            video_data = await video.bytes()
 
             # Generar un nombre de archivo único
             unique_name = f"{user_id}_{uuid.uuid4()}.mp4"
@@ -38,8 +38,9 @@ def download_content(url, user_id, file_format):
         output_name = f"{unique_name}.%(ext)s"
 
         ydl_opts = {
-            'format': 'bestaudio/best' if file_format == 'mp3' else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
+            'format': 'bestvideo+bestaudio/best',
             'outtmpl': output_name,
+            'merge_output_format': 'mp4',  # 🔹 Asegura que el video final sea MP4 con audio
             'postprocessors': [],
         }
 
@@ -48,17 +49,10 @@ def download_content(url, user_id, file_format):
             ydl_opts['postprocessors'].append(
                 {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}
             )
-        else:  # Para MP4
-            ydl_opts['postprocessors'].append(
-                {'key': 'FFmpegVideoRemuxer', 'preferredformat': 'mp4'}  # 🔹 Se corrigió el error de "preferedformat"
-            )
 
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             downloaded_file = ydl.prepare_filename(info)
-
-            # Log para verificar el nombre del archivo final
-            print(f"✅ Archivo descargado y convertido a {file_format.upper()}: {downloaded_file}")
 
             # Ajustar el nombre del archivo si es MP3 o MP4
             if file_format == 'mp3':
@@ -66,6 +60,7 @@ def download_content(url, user_id, file_format):
             elif file_format == 'mp4':
                 downloaded_file = downloaded_file.replace('.webm', '.mp4').replace('.mkv', '.mp4')
 
+            print(f"✅ Archivo descargado correctamente: {downloaded_file}")
             return downloaded_file
     except Exception as e:
         print(f"❌ Error en yt-dlp: {e}")
@@ -127,7 +122,7 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print("🔹 Recibido enlace de TikTok:", url)
         await update.message.reply_text("Descargando video de TikTok, por favor espera...")
 
-        file_path = await descargaTiktok(url, user_id)  # ✅ Ahora sí con await
+        file_path = await descargaTiktok(url, user_id)
 
         if file_path:
             print(f"✅ Video de TikTok descargado: {file_path}")

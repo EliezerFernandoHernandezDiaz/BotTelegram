@@ -1,7 +1,6 @@
 python-telegram-bot==21.7
 pytube==15.0.0
 yt-dlp==2024.11.18
-TikTokApi
+TikTokApi==6.5.2
+playwright==1.41.0
 imageio[ffmpeg]
-playwright
-TikTokApi==7.0.0

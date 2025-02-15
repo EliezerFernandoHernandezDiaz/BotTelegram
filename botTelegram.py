@@ -1,138 +1,108 @@
+
 import os
 import uuid
-import time
-import requests
-import yt_dlp
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from dotenv import load_dotenv
+from yt_dlp import YoutubeDL
 
-# 🔥 Cargar variables de entorno desde Railway
-load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-# 🔍 Depuración: Mostrar el token en logs (NO RECOMENDADO EN PRODUCCIÓN)
-print(f"🔍 BOT_TOKEN en Railway: {BOT_TOKEN}")
-
-# ⚠ Verificar que la variable BOT_TOKEN no esté vacía
-if not BOT_TOKEN:
-    raise ValueError("❌ ERROR: No se encontró BOT_TOKEN en las variables de entorno.")
-
-# 📂 Carpeta de descargas
-DOWNLOAD_DIR = "Downloads"
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-
-### 🔥 FUNCIÓN PARA DESCARGAR MP3 O MP4 DE YOUTUBE
-def download_youtube(url, user_id, file_format):
+# Función para descargar contenido en MP3 o MP4
+def download_content(url, user_id, file_format):
     try:
-        unique_name = f"{user_id}_{uuid.uuid4()}"
-        output_name = f"{DOWNLOAD_DIR}/{unique_name}.%(ext)s"
+        unique_name = f"{user_id}_{uuid.uuid4()}"  # Nombre único sin extensión
+        output_name = f"{unique_name}.%(ext)s"
 
+        # Configura las opciones según el formato
         ydl_opts = {
-            "outtmpl": output_name,
-            "format": "bestaudio/best" if file_format == "mp3" else "bestvideo+bestaudio",
-            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}] if file_format == "mp3" else [],
+            'format': 'bestaudio/best' if file_format == 'mp3' else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+            'outtmpl': output_name,
         }
+        # Agregar postprocesadores solo si es MP3
+        if file_format == 'mp3':
+            ydl_opts['postprocessors'] = [
+                {
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }
+            ]
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            downloaded_file = ydl.prepare_filename(info).replace(".webm", ".mp3" if file_format == "mp3" else ".mp4")
+            downloaded_file = ydl.prepare_filename(info)
+            if file_format == 'mp3':
+                downloaded_file = downloaded_file.replace('.webm', '.mp3').replace('.m4a', '.mp3')
             return downloaded_file
     except Exception as e:
         print(f"Error en yt-dlp: {e}")
-        return None
+        raise e
 
-### 🔥 FUNCIÓN PARA DESCARGAR TIKTOK SIN MARCA DE AGUA
-def download_tiktok(video_url, user_id):
-    try:
-        # Expandir enlace corto si es necesario
-        if "vm.tiktok.com" in video_url or "vt.tiktok.com" in video_url:
-            video_url = requests.head(video_url, allow_redirects=True).url
-            print(f"✅ Enlace expandido: {video_url}")
-
-        video_id = video_url.split("/")[-1].split("?")[0]  # Obtener ID único del video
-        output_path = f"{DOWNLOAD_DIR}/tiktok_{user_id}_{video_id}.mp4"
-
-        options = webdriver.ChromeOptions()
-        options.binary_location = "/usr/bin/google-chrome"
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-software-rasterizer")
-        options.add_argument("--disable-accelerated-2d-canvas")
-        options.add_argument("--disable-popup-blocking")
-        options.add_argument("--remote-debugging-port=9222")
-
-        driver = webdriver.Chrome(options=options)
-        driver.get("https://ssstik.io/")
-
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "main_page_text")))
-
-        input_box = driver.find_element(By.ID, "main_page_text")
-        input_box.send_keys(video_url)
-        input_box.send_keys(Keys.RETURN)
-
-        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@class, 'without_watermark')]")))
-
-        download_button = driver.find_element(By.XPATH, "//a[contains(@class, 'without_watermark')]")
-        video_download_url = download_button.get_attribute("href")
-
-        if video_download_url:
-            headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://ssstik.io/"}
-            video_response = requests.get(video_download_url, headers=headers, stream=True)
-
-            if video_response.status_code == 200:
-                with open(output_path, "wb") as f:
-                    for chunk in video_response.iter_content(1024):
-                        f.write(chunk)
-                driver.quit()
-                return output_path
-    except Exception as e:
-        print(f"❌ Error en TikTok: {e}")
-    finally:
-        driver.quit()
-    return None
-
-### 🔥 HANDLERS DEL BOT DE TELEGRAM
+# Handler para el comando /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 ¡Hola! Envíame un enlace de **YouTube o TikTok** y te lo descargaré.")
+    await update.message.reply_text(
+        "¡Hola! Este bot puede descargar videos de YouTube en MP3 o MP4.\n"
+        "Usa uno de los comandos:\n"
+        "/mp3 - Para descargar en formato MP3 (audio).\n"
+        "/mp4 - Para descargar en formato MP4 (video).\n"
+        "Luego, envía el enlace del video."
+    )
 
+# Handler para seleccionar MP3
+async def mp3(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['format'] = 'mp3'  # Guarda la preferencia del usuario
+    await update.message.reply_text("Has seleccionado MP3. Ahora envía un enlace de YouTube.")
+
+# Handler para seleccionar MP4
+async def mp4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['format'] = 'mp4'  # Guarda la preferencia del usuario
+    await update.message.reply_text("Has seleccionado MP4. Ahora envía un enlace de YouTube.")
+
+# Handler para manejar el enlace
 async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     user_id = update.message.from_user.id
+    file_format = context.user_data.get('format')
 
-    if "tiktok.com" in url:
-        await update.message.reply_text("🎥 Descargando video de TikTok, espera...")
-        video_path = download_tiktok(url, user_id)
-        if video_path:
-            await context.bot.send_video(chat_id=update.effective_chat.id, video=open(video_path, 'rb'))
-            os.remove(video_path)
-        else:
-            await update.message.reply_text("❌ Error al descargar el video de TikTok.")
+    if not file_format:
+        await update.message.reply_text("Por favor selecciona primero un formato usando /mp3 o /mp4.")
+        return
 
-    elif "youtube.com" in url or "youtu.be" in url:
-        file_format = "mp4"
-        await update.message.reply_text(f"📥 Descargando en **{file_format.upper()}**, espera...")
-        file_path = download_youtube(url, user_id, file_format)
+    print("URL recibida:", url)
+    print("Formato seleccionado:", file_format)
+
+    if "youtube.com" in url or "youtu.be" in url:
+        await update.message.reply_text(f"Descargando el contenido como {file_format.upper()}, por favor espera...")
+        file_path = download_content(url, user_id, file_format)
         if file_path:
-            await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
-            os.remove(file_path)
+            print("Archivo descargado:", file_path)
+            try:
+                # Verifica el tamaño del archivo antes de enviarlo
+                if os.path.getsize(file_path) > 50 * 1024 * 1024:  # Límite de 50 MB
+                    await update.message.reply_text("El archivo es demasiado grande para enviarlo por Telegram.")
+                    return
+
+                if file_format == 'mp3':
+                    await context.bot.send_audio(chat_id=update.effective_chat.id, audio=open(file_path, 'rb'))
+                else:
+                    await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
+            finally:
+                os.remove(file_path)  # Elimina el archivo después de enviarlo
         else:
-            await update.message.reply_text("❌ No se pudo descargar el contenido.")
+            await update.message.reply_text("No se pudo descargar el contenido. Verifica el enlace.")
+    else:
+        await update.message.reply_text("Por favor, envía un enlace válido de YouTube.")
 
-### 🔥 INICIAR EL BOT
+# Configuración principal del bot
 def main():
-    application = Application.builder().token(BOT_TOKEN).build()
+    # Crea la aplicación
+    application = Application.builder().token("7693751923:AAH9i-62eI0I4lrYWs2eNKy7hF8Vi5c2EUA").build()
 
+    # Agrega los comandos y handlers
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("mp3", mp3))
+    application.add_handler(CommandHandler("mp4", mp4))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_handler))
 
+    # Ejecuta el bot
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":

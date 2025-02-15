@@ -1,10 +1,44 @@
-# Usa una imagen base de Python
+# Usa una imagen base de Python ligera
 FROM python:3.11-slim
 
 # Establece el directorio de trabajo en el contenedor
 WORKDIR /app
 
-# Copia el archivo de requisitos e instala dependencias
+# Instalar dependencias del sistema necesarias para Chrome y FFmpeg
+RUN apt-get update && apt-get install -y \
+    wget \
+    unzip \
+    ffmpeg \
+    libnss3 \
+    libgconf-2-4 \
+    libxi6 \
+    libxkbcommon-x11-0 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpangocairo-1.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxshmfence1 \
+    libx11-xcb1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Descargar e instalar Google Chrome estable
+RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+    && dpkg -i google-chrome-stable_current_amd64.deb || apt-get -fy install
+
+# Descargar e instalar ChromeDriver manualmente (última versión estable)
+RUN CHROME_DRIVER_VERSION=$(curl -sS https://chromedriver.storage.googleapis.com/LATEST_RELEASE) && \
+    wget -q "https://chromedriver.storage.googleapis.com/${CHROME_DRIVER_VERSION}/chromedriver_linux64.zip" && \
+    unzip chromedriver_linux64.zip && \
+    mv chromedriver /usr/local/bin/ && \
+    chmod +x /usr/local/bin/chromedriver
+
+# Copia el archivo de requisitos e instala dependencias de Python
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -12,16 +46,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install playwright
 RUN playwright install --with-deps
 
-# Copia los archivos de la aplicación
+# Copia los archivos de la aplicación al contenedor
 COPY . /app/
 
-# Da permisos de ejecución al script de instalación de FFmpeg y lo ejecuta
-RUN chmod +x /app/install_ffmpeg.sh && /bin/bash /app/install_ffmpeg.sh
+# Da permisos de ejecución al script de instalación de FFmpeg y lo ejecuta (si existe)
+RUN chmod +x /app/install_ffmpeg.sh && /bin/bash /app/install_ffmpeg.sh || echo "FFmpeg script no encontrado, continuando..."
 
 # Define el comando de inicio del bot
 CMD ["python", "botTelegram.py"]
-
-#Instalando chromium para railway
-RUN apt-get update && apt-get install -y chromium-chromedriver ffmpeg
 
 

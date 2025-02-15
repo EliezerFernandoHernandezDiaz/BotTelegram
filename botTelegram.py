@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 # Cargar variables de entorno (TOKEN de Telegram en Railway)
 load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("7693751923:AAH9i-62eI0I4lrYWs2eNKy7hF8Vi5c2EU")
 
 # Carpeta de descargas
 DOWNLOAD_DIR = "Downloads"
@@ -52,15 +52,16 @@ def download_tiktok(video_url, user_id):
         output_path = f"{DOWNLOAD_DIR}/tiktok_{user_id}_{video_id}.mp4"
 
         options = webdriver.ChromeOptions()
-        options.binary_location = "/usr/bin/chromium"  # Ubicación en Railway
-        options.add_argument("--headless")  
-        options.add_argument("--disable-gpu")
+        options = webdriver.ChromeOptions()
+        options.binary_location = "/usr/bin/google-chrome"  # Ubicación de Chrome
+        options.add_argument("--headless")  # Ejecutar sin interfaz gráfica
         options.add_argument("--no-sandbox")
+        options.add_argument("--disable-gpu")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-software-rasterizer")
         options.add_argument("--disable-accelerated-2d-canvas")
         options.add_argument("--disable-popup-blocking")  
-        options.add_argument("--remote-debugging-port=9222")  
+        options.add_argument("--remote-debugging-port=9222")  # Necesario en Railway
 
         driver = webdriver.Chrome(options=options)
         driver.get("https://ssstik.io/")

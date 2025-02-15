@@ -20,3 +20,8 @@ RUN chmod +x /app/install_ffmpeg.sh && /bin/bash /app/install_ffmpeg.sh
 
 # Define el comando de inicio del bot
 CMD ["python", "botTelegram.py"]
+
+#Instalando chromium para railway
+RUN apt-get update && apt-get install -y chromium-chromedriver ffmpeg
+
+

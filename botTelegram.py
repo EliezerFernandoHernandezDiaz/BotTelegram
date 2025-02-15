@@ -129,7 +129,7 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ### 🔥 INICIAR EL BOT
 def main():
-    application = Application.builder().token("7693751923:AAH9i-62eI0I4lrYWs2eNKy7hF8Vi5c2EU").build()
+    application = Application.builder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_handler))

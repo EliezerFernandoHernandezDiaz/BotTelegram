@@ -16,6 +16,9 @@ from dotenv import load_dotenv
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
+if not BOT_TOKEN:
+    raise ValueError("No se encontró el TOKEN del bot de Telegram en las variables de entorno.")
+
 # Carpeta de descargas
 DOWNLOAD_DIR = "Downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)

@@ -4,27 +4,39 @@ import asyncio  # Importa la librería asyncio
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from yt_dlp import YoutubeDL
-from playwright.sync_api import sync_playwright  # Importa la librería Playwright
+from playwright.async_api import async_playwright  # Importa la librería Playwright
 from TikTokApi import TikTokApi  # Importa la librería TikTokApi
 
 #______________________________________________________________________________________
 
 # 📌 **Función para descargar contenido de TikTok sin marca de agua**
-def descargaTikTok(url, user_id):
-    try:
-        print("Iniciando descarga del TikTok sin marca de agua:", url)
-        with sync_playwright() as p:
-            api = TikTokApi(p)
-            video = api.video(url)
-            video_data = video.bytes()  # Asegurar que bytes() se llama correctamente
+import os
+import uuid
+import asyncio
+from playwright.async_api import async_playwright
+from TikTokApi import TikTokApi
 
-            # Guarda el video en un archivo único
+# Función asíncrona para descargar TikToks sin marca de agua
+async def descargaTikTok(url, user_id):
+    try:
+        print("🔹 Iniciando descarga del TikTok sin marca de agua:", url)
+
+        async with async_playwright() as p:
+            # ✅ Se inicializa Playwright con TikTokApi correctamente
+            api = TikTokApi()
+            video = await api.video(url)  # ✅ `await` necesario
+
+            # Descargar los bytes del video
+            video_data = video.bytes()  
+
+            # Guardar el video en un archivo único
             unique_name = f"{user_id}_{uuid.uuid4()}.mp4"
             with open(unique_name, 'wb') as video_file:
                 video_file.write(video_data)
 
-        print(f"✅ Video de TikTok guardado como: {unique_name}")
-        return unique_name
+            print(f"✅ Video de TikTok guardado como: {unique_name}")
+            return unique_name
+
     except Exception as e:
         print(f"❌ Error al descargar el video de TikTok: {e}")
         return None
@@ -126,22 +138,21 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 os.remove(file_path)  # Elimina el archivo después de enviarlo
         else:
             await update.message.reply_text("No se pudo descargar el contenido. Verifica el enlace.")
-
+#----------------------------------------------------------------------------------------
     elif "tiktok.com" in url:
-        await update.message.reply_text("Descargando el contenido de TikTok sin marca de agua, por favor espera...")
-        file_path = descargaTikTok(url, user_id)
+     await update.message.reply_text("Descargando el contenido de TikTok sin marca de agua, por favor espera...")
+    
+    file_path = await descargaTikTok(url, user_id)  # ✅ Se agregó `await`
 
-        if file_path and os.path.exists(file_path):
-            print("✅ Video de TikTok sin marca de agua descargado con éxito:", file_path)
-            await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
-            os.remove(file_path)
-        else:
-            print("❌ No se pudo descargar el video de TikTok sin marca de agua")
-            await update.message.reply_text("No se pudo descargar el video de TikTok sin marca de agua. Verifica el enlace e inténtalo nuevamente.")
-
+    if file_path and os.path.exists(file_path):
+        print("✅ Video de TikTok sin marca de agua descargado con éxito:", file_path)
+        await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
+        os.remove(file_path)  # Elimina el archivo después de enviarlo
     else:
-        await update.message.reply_text("Por favor, envía un enlace válido de YouTube o TikTok.")
+        print("❌ No se pudo descargar el video de TikTok sin marca de agua")
+        await update.message.reply_text("No se pudo descargar el video de TikTok sin marca de agua. Verifica el enlace e inténtalo nuevamente.")
 
+#----------------------------------------------------------------------------------------
 
 # 📌 **Configuración principal del bot**
 def main():

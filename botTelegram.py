@@ -12,14 +12,18 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from dotenv import load_dotenv
 
-# Cargar variables de entorno (TOKEN de Telegram en Railway)
+# 🔥 Cargar variables de entorno desde Railway
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-if not BOT_TOKEN:
-    raise ValueError("No se encontró el TOKEN del bot de Telegram en las variables de entorno.")
+# 🔍 Depuración: Mostrar el token en logs (NO RECOMENDADO EN PRODUCCIÓN)
+print(f"🔍 BOT_TOKEN en Railway: {BOT_TOKEN}")
 
-# Carpeta de descargas
+# ⚠ Verificar que la variable BOT_TOKEN no esté vacía
+if not BOT_TOKEN:
+    raise ValueError("❌ ERROR: No se encontró BOT_TOKEN en las variables de entorno.")
+
+# 📂 Carpeta de descargas
 DOWNLOAD_DIR = "Downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
@@ -43,7 +47,7 @@ def download_youtube(url, user_id, file_format):
         print(f"Error en yt-dlp: {e}")
         return None
 
-### 🔥 FUNCIÓN PARA DESCARGAR TIKTOK SIN MARCA DE AGUA (COMPATIBLE CON RAILWAY)
+### 🔥 FUNCIÓN PARA DESCARGAR TIKTOK SIN MARCA DE AGUA
 def download_tiktok(video_url, user_id):
     try:
         # Expandir enlace corto si es necesario
@@ -55,31 +59,26 @@ def download_tiktok(video_url, user_id):
         output_path = f"{DOWNLOAD_DIR}/tiktok_{user_id}_{video_id}.mp4"
 
         options = webdriver.ChromeOptions()
-        options = webdriver.ChromeOptions()
-        options.binary_location = "/usr/bin/google-chrome"  # Ubicación de Chrome
-        options.add_argument("--headless")  # Ejecutar sin interfaz gráfica
+        options.binary_location = "/usr/bin/google-chrome"
+        options.add_argument("--headless")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-software-rasterizer")
         options.add_argument("--disable-accelerated-2d-canvas")
-        options.add_argument("--disable-popup-blocking")  
-        options.add_argument("--remote-debugging-port=9222")  # Necesario en Railway
+        options.add_argument("--disable-popup-blocking")
+        options.add_argument("--remote-debugging-port=9222")
 
         driver = webdriver.Chrome(options=options)
         driver.get("https://ssstik.io/")
 
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "main_page_text"))
-        )
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "main_page_text")))
 
         input_box = driver.find_element(By.ID, "main_page_text")
         input_box.send_keys(video_url)
         input_box.send_keys(Keys.RETURN)
 
-        WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((By.XPATH, "//a[contains(@class, 'without_watermark')]"))
-        )
+        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@class, 'without_watermark')]")))
 
         download_button = driver.find_element(By.XPATH, "//a[contains(@class, 'without_watermark')]")
         video_download_url = download_button.get_attribute("href")
@@ -113,17 +112,17 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         video_path = download_tiktok(url, user_id)
         if video_path:
             await context.bot.send_video(chat_id=update.effective_chat.id, video=open(video_path, 'rb'))
-            os.remove(video_path)  # Elimina el archivo después de enviarlo
+            os.remove(video_path)
         else:
             await update.message.reply_text("❌ Error al descargar el video de TikTok.")
 
     elif "youtube.com" in url or "youtu.be" in url:
-        file_format = "mp4"  # Cambia a "mp3" si prefieres audio por defecto
+        file_format = "mp4"
         await update.message.reply_text(f"📥 Descargando en **{file_format.upper()}**, espera...")
         file_path = download_youtube(url, user_id, file_format)
         if file_path:
             await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
-            os.remove(file_path)  # Elimina el archivo después de enviarlo
+            os.remove(file_path)
         else:
             await update.message.reply_text("❌ No se pudo descargar el contenido.")
 

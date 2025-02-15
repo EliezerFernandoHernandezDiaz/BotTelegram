@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 # Cargar variables de entorno (TOKEN de Telegram en Railway)
 load_dotenv()
-BOT_TOKEN = os.getenv("7693751923:AAH9i-62eI0I4lrYWs2eNKy7hF8Vi5c2EU")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 # Carpeta de descargas
 DOWNLOAD_DIR = "Downloads"

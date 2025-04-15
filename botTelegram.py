@@ -27,7 +27,7 @@ def reencode_video_for_telegram(file_path):
     output_path = f"reencoded_{file_path}"
 
     try:
-        # Verificar si hay pista de video real
+        # Verificar si el archivo tiene pista de video
         result = subprocess.run(
             ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
              'stream=codec_type', '-of', 'json', file_path],
@@ -38,7 +38,7 @@ def reencode_video_for_telegram(file_path):
         data = json.loads(result.stdout)
         has_video = bool(data.get("streams"))
     except Exception as e:
-        print(f"⚠️ No se pudo analizar el archivo: {e}")
+        print(f"⚠️ No se pudo analizar el archivo con ffprobe: {e}")
         has_video = False
 
     try:
@@ -47,7 +47,7 @@ def reencode_video_for_telegram(file_path):
             command = [
                 "ffmpeg", "-y",
                 "-i", file_path,
-                "-t", "60",
+                "-t", "60",  # Limita duración a 60 segundos
                 "-map", "0:v:0", "-map", "0:a:0",
                 "-c:v", "libx264",
                 "-c:a", "aac",
@@ -61,19 +61,24 @@ def reencode_video_for_telegram(file_path):
         else:
             print("📸 El archivo NO tiene video. Se generará un video real con imagen + audio.")
 
-            # Crear imagen visible temporal
+            # Crear imagen visible con texto
             image_path = f"slide_{uuid.uuid4()}.jpg"
             width, height = 1280, 720
             img = Image.new("RGB", (width, height), color="white")
             draw = ImageDraw.Draw(img)
             text = "Descargado desde TikTok"
             font = ImageFont.load_default()
-            text_width, text_height = draw.textsize(text, font=font)
+
+            # ✅ Usa textbbox en lugar de textsize
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
             position = ((width - text_width) // 2, (height - text_height) // 2)
+
             draw.text(position, text, fill="black", font=font)
             img.save(image_path)
 
-            # Video de 60s con 30fps usando esa imagen
+            # Generar video con imagen repetida
             video_temp = f"video_{uuid.uuid4()}.mp4"
             subprocess.run([
                 "ffmpeg", "-y",
@@ -86,7 +91,7 @@ def reencode_video_for_telegram(file_path):
                 video_temp
             ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
-            # Combinar ese video con el audio del archivo original
+            # Combinar con el audio original
             subprocess.run([
                 "ffmpeg", "-y",
                 "-i", video_temp,
@@ -99,15 +104,16 @@ def reencode_video_for_telegram(file_path):
             ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
             # Limpiar archivos temporales
-            for temp_file in [image_path, video_temp]:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
+            for f in [image_path, video_temp]:
+                if os.path.exists(f):
+                    os.remove(f)
 
             return output_path
 
     except Exception as e:
         print(f"❌ Error al recodificar: {e}")
         return file_path
+    
 def download_tiktok_video(url, user_id):
     # ======== PRIMER INTENTO: RapidAPI ==========
     try:

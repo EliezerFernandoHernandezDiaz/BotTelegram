@@ -38,7 +38,7 @@ def download_content(url, user_id, file_format):
         raise e
 
 
-  def sanitize_tiktok_url(raw_url):
+def sanitize_tiktok_url(raw_url):
     from urllib.parse import urlparse, urlunparse
     parsed = urlparse(raw_url)
     return urlunparse(parsed._replace(query=""))

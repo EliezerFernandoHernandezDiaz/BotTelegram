@@ -23,9 +23,8 @@ def sanitize_tiktok_url(raw_url):
 
 def reencode_video_for_telegram(file_path):
     output_path = f"reencoded_{file_path}"
-
-    # Verificar si tiene video
     try:
+        # Detectar si el archivo tiene pista de video
         result = subprocess.run(
             ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
              'stream=codec_type', '-of', 'json', file_path],
@@ -35,18 +34,45 @@ def reencode_video_for_telegram(file_path):
         )
         data = json.loads(result.stdout)
         has_video = bool(data.get("streams"))
+
     except Exception as e:
-        print(f"⚠️ No se pudo analizar el archivo: {e}")
+        print(f"⚠️ Error analizando video con ffprobe: {e}")
         has_video = False
 
     try:
-        if not has_video:
-            # Si NO tiene video, crear un video con imagen fija
-            print("📸 El archivo no tiene video, se generará uno con imagen fija.")
+        if has_video:
+            print("🎞 El archivo tiene video, se recodifica por compatibilidad.")
+            command = [
+                "ffmpeg", "-y",
+                "-i", file_path,
+                "-t", "60",  # cortar por si acaso
+                "-map", "0:v:0", "-map", "0:a:0",
+                "-c:v", "libx264",
+                "-c:a", "aac",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                output_path
+            ]
+
+        else:
+            print("📸 El archivo no tiene video. Se usará imagen repetida + audio.")
+
+            # Intentar extraer imagen del archivo original
             image_temp = f"frame_{uuid.uuid4()}.jpg"
-            subprocess.run([
-                "ffmpeg", "-y", "-i", file_path, "-vframes", "1", "-q:v", "2", image_temp
-            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            try:
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", file_path,
+                    "-vframes", "1", "-q:v", "2", image_temp
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            except:
+                print("⚠️ No se pudo extraer imagen, se usará fondo negro.")
+                image_temp = f"black_{uuid.uuid4()}.jpg"
+                subprocess.run([
+                    "ffmpeg", "-y", "-f", "lavfi",
+                    "-i", "color=black:s=1280x720:d=1",
+                    "-frames:v", "1",
+                    image_temp
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
             command = [
                 "ffmpeg", "-y",
@@ -61,22 +87,11 @@ def reencode_video_for_telegram(file_path):
                 "-movflags", "+faststart",
                 output_path
             ]
-            subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+        if 'image_temp' in locals() and os.path.exists(image_temp):
             os.remove(image_temp)
-        else:
-            # Si ya tiene video, simplemente lo recodificamos por compatibilidad
-            print("🎞 El archivo tiene video, se recodifica por compatibilidad.")
-            command = [
-                "ffmpeg", "-y",
-                "-i", file_path,
-                "-map", "0:v:0", "-map", "0:a:0",
-                "-c:v", "libx264",
-                "-c:a", "aac",
-                "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart",
-                output_path
-            ]
-            subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
         return output_path
 
@@ -233,7 +248,6 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     os.remove(reencoded_path)
         else:
             await update.message.reply_text("❌ No se pudo descargar el video de TikTok.")
-
 
 # ====== Main ======
 

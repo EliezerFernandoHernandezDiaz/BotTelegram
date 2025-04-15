@@ -4,6 +4,7 @@ import uuid
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from yt_dlp import YoutubeDL
+import requests
 
 # Función para descargar contenido en MP3 o MP4
 def download_content(url, user_id, file_format):
@@ -36,6 +37,39 @@ def download_content(url, user_id, file_format):
         print(f"Error en yt-dlp: {e}")
         raise e
 
+
+  #descargar tiktoks
+def download_tiktok_video(url, user_id):
+    try:
+        api_url = "https://tiktok-download-without-watermark.p.rapidapi.com/media-info/"
+        headers = {
+            "X-RapidAPI-Key": "TU_API_KEY",  #c987832c40msh8923556ddd5a6a4p1c1c87jsn3cd43aca712e
+            "X-RapidAPI-Host": "tiktok-download-without-watermark.p.rapidapi.com"
+        }
+        params = {"link": url}
+
+        response = requests.get(api_url, headers=headers, params=params)
+        response.raise_for_status()
+        data = response.json()
+
+        video_url = data.get("data", {}).get("play")
+        if not video_url:
+            print("No se encontró el enlace de video sin marca de agua.")
+            return None
+
+        filename = f"{user_id}_{uuid.uuid4()}.mp4"
+        with requests.get(video_url, stream=True) as r:
+            r.raise_for_status()
+            with open(filename, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+        return filename
+
+    except Exception as e:
+        print(f"Error al descargar video TikTok: {e}")
+        return None
+
+
 # Handler para el comando /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -55,15 +89,19 @@ async def mp3(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def mp4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['format'] = 'mp4'  # Guarda la preferencia del usuario
     await update.message.reply_text("Has seleccionado MP4. Ahora envía un enlace de YouTube.")
+    
+#Handler para tiktok 
+async def tiktok(update:Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['format']= tiktok
+    await update.message.reply_text("Has seleccionado descarga por tiktok sin marca de agua, Ahora envia un enlace válido de un tiktok")
 
-# Handler para manejar el enlace
 async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     user_id = update.message.from_user.id
     file_format = context.user_data.get('format')
 
     if not file_format:
-        await update.message.reply_text("Por favor selecciona primero un formato usando /mp3 o /mp4.")
+        await update.message.reply_text("Por favor selecciona primero un formato usando /mp3, /mp4 o /tiktok.")
         return
 
     print("URL recibida:", url)
@@ -75,21 +113,35 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if file_path:
             print("Archivo descargado:", file_path)
             try:
-                # Verifica el tamaño del archivo antes de enviarlo
-                if os.path.getsize(file_path) > 50 * 1024 * 1024:  # Límite de 50 MB
+                if os.path.getsize(file_path) > 50 * 1024 * 1024:
                     await update.message.reply_text("El archivo es demasiado grande para enviarlo por Telegram.")
                     return
-
                 if file_format == 'mp3':
                     await context.bot.send_audio(chat_id=update.effective_chat.id, audio=open(file_path, 'rb'))
                 else:
                     await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
             finally:
-                os.remove(file_path)  # Elimina el archivo después de enviarlo
+                os.remove(file_path)
         else:
             await update.message.reply_text("No se pudo descargar el contenido. Verifica el enlace.")
+    
+    elif "tiktok.com" in url and file_format == "tiktok":
+        await update.message.reply_text("Descargando video de TikTok sin marca de agua, espera un momento...")
+        file_path = download_tiktok_video(url, user_id)
+        if file_path:
+            try:
+                if os.path.getsize(file_path) > 50 * 1024 * 1024:
+                    await update.message.reply_text("El archivo es demasiado grande para enviarlo por Telegram.")
+                    return
+                await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
+            finally:
+                os.remove(file_path)
+        else:
+            await update.message.reply_text("No se pudo descargar el video. Asegúrate que el enlace es válido.")
+    
     else:
-        await update.message.reply_text("Por favor, envía un enlace válido de YouTube.")
+        await update.message.reply_text("Por favor, envía un enlace válido de YouTube o TikTok.")
+
 
 # Configuración principal del bot
 def main():

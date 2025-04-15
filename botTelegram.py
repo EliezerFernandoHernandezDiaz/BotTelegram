@@ -6,7 +6,7 @@ from urllib.parse import urlparse, urlunparse
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from yt_dlp import YoutubeDL
-
+import json
 # ====== TikTok Functions ======
 
 def resolve_tiktok_redirect(url):
@@ -23,30 +23,61 @@ def sanitize_tiktok_url(raw_url):
 
 def reencode_video_for_telegram(file_path):
     output_path = f"reencoded_{file_path}"
+
+    # Verificar si tiene video
     try:
-        # Extrae la primera imagen como fotograma
-        image_temp = f"frame_{uuid.uuid4()}.jpg"
-        subprocess.run([
-            "ffmpeg", "-y", "-i", file_path, "-vframes", "1", "-q:v", "2", image_temp
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        result = subprocess.run(
+            ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
+             'stream=codec_type', '-of', 'json', file_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=True
+        )
+        data = json.loads(result.stdout)
+        has_video = bool(data.get("streams"))
+    except Exception as e:
+        print(f"⚠️ No se pudo analizar el archivo: {e}")
+        has_video = False
 
-        # Crea un video estático desde la imagen, manteniendo el audio original
-        command = [
-            "ffmpeg", "-y",
-            "-loop", "1",
-            "-i", image_temp,
-            "-i", file_path,
-            "-shortest",
-            "-c:v", "libx264",
-            "-c:a", "aac",
-            "-pix_fmt", "yuv420p",
-            "-tune", "stillimage",
-            "-movflags", "+faststart",
-            output_path
-        ]
-        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    try:
+        if not has_video:
+            # Si NO tiene video, crear un video con imagen fija
+            print("📸 El archivo no tiene video, se generará uno con imagen fija.")
+            image_temp = f"frame_{uuid.uuid4()}.jpg"
+            subprocess.run([
+                "ffmpeg", "-y", "-i", file_path, "-vframes", "1", "-q:v", "2", image_temp
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
-        os.remove(image_temp)
+            command = [
+                "ffmpeg", "-y",
+                "-loop", "1",
+                "-i", image_temp,
+                "-i", file_path,
+                "-shortest",
+                "-c:v", "libx264",
+                "-c:a", "aac",
+                "-pix_fmt", "yuv420p",
+                "-tune", "stillimage",
+                "-movflags", "+faststart",
+                output_path
+            ]
+            subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            os.remove(image_temp)
+        else:
+            # Si ya tiene video, simplemente lo recodificamos por compatibilidad
+            print("🎞 El archivo tiene video, se recodifica por compatibilidad.")
+            command = [
+                "ffmpeg", "-y",
+                "-i", file_path,
+                "-map", "0:v:0", "-map", "0:a:0",
+                "-c:v", "libx264",
+                "-c:a", "aac",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                output_path
+            ]
+            subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
         return output_path
 
     except Exception as e:
@@ -54,38 +85,37 @@ def reencode_video_for_telegram(file_path):
         return file_path
 
 def download_tiktok_video(url, user_id):
+    # ======== PRIMER INTENTO: RapidAPI ==========
     try:
         resolved_url = resolve_tiktok_redirect(url)
         clean_url = sanitize_tiktok_url(resolved_url)
-        print(f"🔗 Enlace limpio final: {clean_url}")
 
         api_url = "https://tiktok-download-without-watermark.p.rapidapi.com/analysis"
         headers = {
-            "X-RapidAPI-Key": "c987832c40msh8923556ddd5a6a4p1c1c87jsn3cd43aca712e",  # ⚠️ Reemplazar
+            "X-RapidAPI-Key": "c987832c40msh8923556ddd5a6a4p1c1c87jsn3cd43aca712e",  # <-- pegá aquí tu key
             "X-RapidAPI-Host": "tiktok-download-without-watermark.p.rapidapi.com",
             "User-Agent": "Mozilla/5.0"
         }
         params = {"url": clean_url}
 
-        response = requests.get(api_url, headers=headers, params=params)
+        response = requests.get(api_url, headers=headers, params=params, timeout=10)
         response.raise_for_status()
         data = response.json()
-
         video_url = data.get("data", {}).get("play")
-        if not video_url:
-            return None
 
-        filename = f"{user_id}_{uuid.uuid4()}.mp4"
-        with requests.get(video_url, stream=True) as r:
-            r.raise_for_status()
-            with open(filename, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-        return filename
+        if video_url:
+            filename = f"{user_id}_{uuid.uuid4()}.mp4"
+            with requests.get(video_url, stream=True) as r:
+                r.raise_for_status()
+                with open(filename, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            print("✅ Video descargado con RapidAPI")
+            return filename
 
     except Exception as e:
-        print(f"❌ Error al descargar TikTok: {e}")
-        return None
+        print(f"⚠️ RapidAPI falló: {e}")
+        return "TRY_TIKWM"
 
 # ====== YouTube Functions ======
 
@@ -169,6 +199,26 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif ("tiktok.com" in url or "vm.tiktok.com" in url) and file_format == "tiktok":
         await update.message.reply_text("Descargando video de TikTok sin marca de agua...")
         file_path = download_tiktok_video(url, user_id)
+
+        if file_path == "TRY_TIKWM":
+            await update.message.reply_text("⚠️ Hubo un problema con el servidor principal. Intentaremos nuevamente, por favor espera...")
+            try:
+                response = requests.get("https://tikwm.com/api/", params={"url": url}, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+                video_url = data.get("data", {}).get("play")
+                if video_url:
+                    file_path = f"{user_id}_{uuid.uuid4()}.mp4"
+                    with requests.get(video_url, stream=True) as r:
+                        r.raise_for_status()
+                        with open(file_path, 'wb') as f:
+                            for chunk in r.iter_content(chunk_size=8192):
+                                f.write(chunk)
+            except Exception as e:
+                print(f"❌ TikWM también falló: {e}")
+                await update.message.reply_text("❌ Lo sentimos, no se pudo descargar el video. Intenta más tarde.")
+                return
+
         if file_path:
             try:
                 reencoded_path = reencode_video_for_telegram(file_path)
@@ -184,8 +234,6 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("❌ No se pudo descargar el video de TikTok.")
 
-    else:
-        await update.message.reply_text("⚠️ Enlace no válido o formato no reconocido.")
 
 # ====== Main ======
 

@@ -24,20 +24,33 @@ def sanitize_tiktok_url(raw_url):
 def reencode_video_for_telegram(file_path):
     output_path = f"reencoded_{file_path}"
     try:
+        # Extrae la primera imagen como fotograma
+        image_temp = f"frame_{uuid.uuid4()}.jpg"
+        subprocess.run([
+            "ffmpeg", "-y", "-i", file_path, "-vframes", "1", "-q:v", "2", image_temp
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+        # Crea un video estático desde la imagen, manteniendo el audio original
         command = [
-            "ffmpeg",
+            "ffmpeg", "-y",
+            "-loop", "1",
+            "-i", image_temp,
             "-i", file_path,
-            "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+            "-shortest",
             "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
             "-c:a", "aac",
+            "-pix_fmt", "yuv420p",
+            "-tune", "stillimage",
             "-movflags", "+faststart",
             output_path
         ]
         subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+        os.remove(image_temp)
         return output_path
+
     except Exception as e:
-        print(f"❌ Error al reencodificar: {e}")
+        print(f"❌ Error al recodificar: {e}")
         return file_path
 
 def download_tiktok_video(url, user_id):

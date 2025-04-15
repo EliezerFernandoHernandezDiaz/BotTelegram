@@ -38,23 +38,32 @@ def download_content(url, user_id, file_format):
         raise e
 
 
-  #descargar tiktoks
+  def sanitize_tiktok_url(raw_url):
+    from urllib.parse import urlparse, urlunparse
+    parsed = urlparse(raw_url)
+    return urlunparse(parsed._replace(query=""))
+
 def download_tiktok_video(url, user_id):
     try:
-        api_url = "https://tiktok-download-without-watermark.p.rapidapi.com/media-info/"
+        clean_url = sanitize_tiktok_url(url)
+        print(f"🔗 Enlace limpio: {clean_url}")
+
+        api_url = "https://tiktok-download-without-watermark.p.rapidapi.com/analysis"
         headers = {
-            "X-RapidAPI-Key": "TU_API_KEY",  #c987832c40msh8923556ddd5a6a4p1c1c87jsn3cd43aca712e
-            "X-RapidAPI-Host": "tiktok-download-without-watermark.p.rapidapi.com"
+            "X-RapidAPI-Key": "RAPIDAPI_KEY", #c987832c40msh8923556ddd5a6a4p1c1c87jsn3cd43aca712e
+            "X-RapidAPI-Host": "tiktok-download-without-watermark.p.rapidapi.com",
+            "User-Agent": "Mozilla/5.0"
         }
-        params = {"link": url}
+        params = {"url": clean_url}  # este es el nombre correcto del parámetro
 
         response = requests.get(api_url, headers=headers, params=params)
         response.raise_for_status()
         data = response.json()
+        print("✅ Respuesta recibida de API:", data)
 
         video_url = data.get("data", {}).get("play")
         if not video_url:
-            print("No se encontró el enlace de video sin marca de agua.")
+            print("⚠️ No se encontró el enlace del video sin marca de agua.")
             return None
 
         filename = f"{user_id}_{uuid.uuid4()}.mp4"
@@ -66,9 +75,8 @@ def download_tiktok_video(url, user_id):
         return filename
 
     except Exception as e:
-        print(f"Error al descargar video TikTok: {e}")
+        print(f"❌ Error al descargar video TikTok: {e}")
         return None
-
 
 # Handler para el comando /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -77,6 +85,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Usa uno de los comandos:\n"
         "/mp3 - Para descargar en formato MP3 (audio).\n"
         "/mp4 - Para descargar en formato MP4 (video).\n"
+        "/tiktok - Para descargar un video de tiktok sin marca de agua (video). \n"
         "Luego, envía el enlace del video."
     )
 

@@ -7,6 +7,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from yt_dlp import YoutubeDL
 import json
+from PIL import Image, ImageDraw, ImageFont
 # ====== TikTok Functions ======
 
 def resolve_tiktok_redirect(url):
@@ -21,10 +22,12 @@ def sanitize_tiktok_url(raw_url):
     parsed = urlparse(raw_url)
     return urlunparse(parsed._replace(query=""))
 
+
 def reencode_video_for_telegram(file_path):
     output_path = f"reencoded_{file_path}"
+
     try:
-        # Detectar si el archivo tiene pista de video
+        # Verificar si hay pista de video real
         result = subprocess.run(
             ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
              'stream=codec_type', '-of', 'json', file_path],
@@ -34,9 +37,8 @@ def reencode_video_for_telegram(file_path):
         )
         data = json.loads(result.stdout)
         has_video = bool(data.get("streams"))
-
     except Exception as e:
-        print(f"⚠️ Error analizando video con ffprobe: {e}")
+        print(f"⚠️ No se pudo analizar el archivo: {e}")
         has_video = False
 
     try:
@@ -45,7 +47,7 @@ def reencode_video_for_telegram(file_path):
             command = [
                 "ffmpeg", "-y",
                 "-i", file_path,
-                "-t", "60",  # cortar por si acaso
+                "-t", "60",
                 "-map", "0:v:0", "-map", "0:a:0",
                 "-c:v", "libx264",
                 "-c:a", "aac",
@@ -53,52 +55,59 @@ def reencode_video_for_telegram(file_path):
                 "-movflags", "+faststart",
                 output_path
             ]
+            subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            return output_path
 
         else:
-            print("📸 El archivo no tiene video. Se usará imagen repetida + audio.")
+            print("📸 El archivo NO tiene video. Se generará un video real con imagen + audio.")
 
-            # Intentar extraer imagen del archivo original
-            image_temp = f"frame_{uuid.uuid4()}.jpg"
-            try:
-                subprocess.run([
-                    "ffmpeg", "-y", "-i", file_path,
-                    "-vframes", "1", "-q:v", "2", image_temp
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-            except:
-                print("⚠️ No se pudo extraer imagen, se usará fondo negro.")
-                image_temp = f"black_{uuid.uuid4()}.jpg"
-                subprocess.run([
-                    "ffmpeg", "-y", "-f", "lavfi",
-                    "-i", "color=black:s=1280x720:d=1",
-                    "-frames:v", "1",
-                    image_temp
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            # Crear imagen visible temporal
+            image_path = f"slide_{uuid.uuid4()}.jpg"
+            width, height = 1280, 720
+            img = Image.new("RGB", (width, height), color="white")
+            draw = ImageDraw.Draw(img)
+            text = "Descargado desde TikTok"
+            font = ImageFont.load_default()
+            text_width, text_height = draw.textsize(text, font=font)
+            position = ((width - text_width) // 2, (height - text_height) // 2)
+            draw.text(position, text, fill="black", font=font)
+            img.save(image_path)
 
-            command = [
+            # Video de 60s con 30fps usando esa imagen
+            video_temp = f"video_{uuid.uuid4()}.mp4"
+            subprocess.run([
                 "ffmpeg", "-y",
                 "-loop", "1",
-                "-i", image_temp,
-                "-i", file_path,
-                "-shortest",
+                "-i", image_path,
+                "-t", "60",
+                "-r", "30",
                 "-c:v", "libx264",
-                "-c:a", "aac",
                 "-pix_fmt", "yuv420p",
-                "-tune", "stillimage",
+                video_temp
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+            # Combinar ese video con el audio del archivo original
+            subprocess.run([
+                "ffmpeg", "-y",
+                "-i", video_temp,
+                "-i", file_path,
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-shortest",
                 "-movflags", "+faststart",
                 output_path
-            ]
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
-        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            # Limpiar archivos temporales
+            for temp_file in [image_path, video_temp]:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
 
-        if 'image_temp' in locals() and os.path.exists(image_temp):
-            os.remove(image_temp)
-
-        return output_path
+            return output_path
 
     except Exception as e:
         print(f"❌ Error al recodificar: {e}")
         return file_path
-
 def download_tiktok_video(url, user_id):
     # ======== PRIMER INTENTO: RapidAPI ==========
     try:

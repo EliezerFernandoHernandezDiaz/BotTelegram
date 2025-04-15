@@ -92,7 +92,7 @@ async def mp4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
 #Handler para tiktok 
 async def tiktok(update:Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['format']= tiktok
+    context.user_data['format']= "tiktok"
     await update.message.reply_text("Has seleccionado descarga por tiktok sin marca de agua, Ahora envia un enlace válido de un tiktok")
 
 async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -152,6 +152,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("mp3", mp3))
     application.add_handler(CommandHandler("mp4", mp4))
+    application.add_handler(CommandHandler("tiktok",tiktok))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_handler))
 
     # Ejecuta el bot

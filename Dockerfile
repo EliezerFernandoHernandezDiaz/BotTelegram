@@ -54,6 +54,6 @@ COPY . /app/
 RUN chmod +x /app/install_ffmpeg.sh && /bin/bash /app/install_ffmpeg.sh || echo "FFmpeg script no encontrado, continuando..."
 
 # Define el comando de inicio del bot
-CMD ["python", "botTelegram.py"]
+CMD ["python3", "botTelegram.py"]
 
 

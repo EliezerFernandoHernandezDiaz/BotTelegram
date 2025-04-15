@@ -4,7 +4,7 @@ FROM python:3.11-slim
 # Establece el directorio de trabajo en el contenedor
 WORKDIR /app
 
-# Instalar dependencias del sistema necesarias para Chrome y FFmpeg
+# Instala dependencias del sistema necesarias para Chrome, Playwright y FFmpeg
 RUN apt-get update && apt-get install -y \
     wget \
     unzip \
@@ -30,9 +30,10 @@ RUN apt-get update && apt-get install -y \
 
 # Descargar e instalar Google Chrome estable
 RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
-    && dpkg -i google-chrome-stable_current_amd64.deb || apt-get -fy install
+    && dpkg -i google-chrome-stable_current_amd64.deb || apt-get -fy install \
+    && rm google-chrome-stable_current_amd64.deb
 
-# Instalar ChromeDriver de forma manual con una versión específica
+# Instalar ChromeDriver
 RUN wget -q https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip \
     && unzip chromedriver_linux64.zip \
     && mv chromedriver /usr/local/bin/ \
@@ -43,17 +44,14 @@ RUN wget -q https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriv
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Instalar Playwright y sus navegadores
+# Instalar Playwright y navegadores (por si los usás en el bot)
 RUN pip install playwright
 RUN playwright install --with-deps
 
-# Copia los archivos de la aplicación al contenedor
+# Copia el resto de la aplicación
 COPY . /app/
 
-# Da permisos de ejecución al script de instalación de FFmpeg y lo ejecuta (si existe)
-RUN chmod +x /app/install_ffmpeg.sh && /bin/bash /app/install_ffmpeg.sh || echo "FFmpeg script no encontrado, continuando..."
-
-# Define el comando de inicio del bot
-CMD ["python3", "botTelegram.py"]
+# Define el comando por defecto para ejecutar el bot
+CMD ["python", "botTelegram.py"]
 
 

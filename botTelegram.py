@@ -138,8 +138,10 @@ def download_content(url, user_id, file_format):
     try:
         output_name = f"{user_id}_{uuid.uuid4()}.%(ext)s"
         ydl_opts = {
-            'format': 'bestaudio/best' if file_format == 'mp3' else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+            'format': 'bestaudio/best' if file_format == 'mp3' 
+            else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
             'outtmpl': output_name,
+            'cookiefile': 'youtube_cookies.txt'
         }
         if file_format == 'mp3':
             ydl_opts['postprocessors'] = [{

@@ -15,7 +15,8 @@ cookies_dst = os.path.join(os.getcwd(), 'youtube_cookies.txt')
 
 if os.path.exists(cookies_src):
     shutil.copy(cookies_src, cookies_dst)
-    print("✅ Archivo de cookies copiado correctamente.")
+    with open ("/data/youtube_cookies.txt", "r") as f:
+     print("📄 Contenido de cookies:\n", f.read())
 else:
     print("❌ Archivo de cookies no encontrado.")
 # ====== TikTok Functions ======

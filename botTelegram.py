@@ -7,6 +7,13 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from yt_dlp import YoutubeDL
 import json
+import shutil, os
+
+
+
+if not os.path.exists("/data/youtube_cookies.txt") and os.path.exists("youtube_cookies.txt"):
+    shutil.copy("youtube_cookies.txt", "/data/youtube_cookies.txt")
+
 # ====== TikTok Functions ======
 
 def resolve_tiktok_redirect(url):
@@ -141,7 +148,7 @@ def download_content(url, user_id, file_format):
             'format': 'bestaudio/best' if file_format == 'mp3' 
             else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
             'outtmpl': output_name,
-            'cookiefile': 'youtube_cookies.txt'
+            'cookiefile': '/data/youtube_cookies.txt',
         }
         if file_format == 'mp3':
             ydl_opts['postprocessors'] = [{

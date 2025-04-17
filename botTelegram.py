@@ -10,10 +10,14 @@ import json
 import shutil, os
 
 
+cookies_src = '/data/youtube_cookies.txt'
+cookies_dst = os.path.join(os.getcwd(), 'youtube_cookies.txt')
 
-if not os.path.exists("/data/youtube_cookies.txt") and os.path.exists("youtube_cookies.txt"):
-    shutil.copy("youtube_cookies.txt", "/data/youtube_cookies.txt")
-
+if os.path.exists(cookies_src):
+    shutil.copy(cookies_src, cookies_dst)
+    print("✅ Archivo de cookies copiado correctamente.")
+else:
+    print("❌ Archivo de cookies no encontrado.")
 # ====== TikTok Functions ======
 
 def resolve_tiktok_redirect(url):

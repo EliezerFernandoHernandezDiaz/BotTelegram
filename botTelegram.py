@@ -163,48 +163,60 @@ def fallback_download_youtube(video_id, file_format, user_id):
         return None
 
 def download_content(url, user_id, file_format):
-    try:
-        output_name = f"{user_id}_{uuid.uuid4()}.%(ext)s"
-        ydl_opts = {
-            'format': 'bestaudio/best' if file_format == 'mp3' 
-            else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
-            'outtmpl': output_name,
-            'cookiefile': '/data/youtube_cookies.txt',
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'http_headers': {
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-            },
-            'geo_bypass': True,
-            'nocheckcertificate': True,
-            'player_client': 'android',
-            'quiet': False,
-        }
+    import re
+    output_name = f"{user_id}_{uuid.uuid4()}.%(ext)s"
+    video_id = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url)
+    video_id = video_id.group(1) if video_id else None
 
-        if file_format == 'mp3':
-            ydl_opts['postprocessors'] = [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }]
-
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            downloaded_file = ydl.prepare_filename(info)
+    def try_download(client_type):
+        try:
+            ydl_opts = {
+                'format': 'bestaudio/best' if file_format == 'mp3' 
+                else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
+                'outtmpl': output_name,
+                'cookiefile': '/data/youtube_cookies.txt',
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'http_headers': {
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                },
+                'geo_bypass': True,
+                'nocheckcertificate': True,
+                'player_client': client_type,
+                'quiet': False,
+            }
 
             if file_format == 'mp3':
-                downloaded_file = downloaded_file.replace('.webm', '.mp3').replace('.m4a', '.mp3')
+                ydl_opts['postprocessors'] = [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }]
 
-            return downloaded_file
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                downloaded_file = ydl.prepare_filename(info)
 
-    except Exception as e:
-        print(f"❌ yt-dlp falló: {e}")
-        import re
-        match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url)
-        video_id = match.group(1) if match else None
-        if video_id:
-            return fallback_download_youtube(video_id, file_format, user_id)
-        return None
+                if file_format == 'mp3':
+                    downloaded_file = downloaded_file.replace('.webm', '.mp3').replace('.m4a', '.mp3')
+
+                return downloaded_file
+        except Exception as e:
+            print(f"⚠️ yt-dlp falló con client '{client_type}': {e}")
+            return None
+
+    # 👉 Intento 1: android
+    file_path = try_download('android')
+
+    # 👉 Intento 2: tvhtml5 si el primero falla
+    if not file_path:
+        file_path = try_download('tvhtml5')
+
+    # 👉 Fallback con API externa si todos fallan
+    if not file_path and video_id:
+        return fallback_download_youtube(video_id, file_format, user_id)
+
+    return file_path
 
 # ====== Telegram Handlers ======
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):

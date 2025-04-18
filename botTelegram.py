@@ -178,8 +178,41 @@ def download_content(url, user_id, file_format):
                 downloaded_file = downloaded_file.replace('.webm', '.mp3').replace('.m4a', '.mp3')
             return downloaded_file
     except Exception as e:
-        print(f"❌ Error yt-dlp: {e}")
+        print(f"❌ yt-dlp falló: {e}")
+        print("🔄 Intentando fallback con API externa...")
+        return download_youtube_with_api(url, user_id, file_format)
+
+def download_youtube_with_api(url, user_id, file_format):
+    api_url = "https://ytstream-download-youtube-videos.p.rapidapi.com/dl"
+    headers = {
+        "X-RapidAPI-Key": "c987832c40msh8923556ddd5a6a4p1c1c87jsn3cd43aca712e",
+        "X-RapidAPI-Host": "ytstream-download-youtube-videos.p.rapidapi.com"
+    }
+    try:
+        video_id = url.split("v=")[-1].split("&")[0]
+        response = requests.get(api_url, headers=headers, params={"id": video_id})
+        response.raise_for_status()
+        data = response.json()
+
+        if file_format == "mp3":
+            direct_url = data['link']['audio']['mp3']['url']
+            ext = "mp3"
+        else:
+            direct_url = data['link']['mp4']['url']
+            ext = "mp4"
+
+        file_name = f"{user_id}_{uuid.uuid4()}.{ext}"
+        with requests.get(direct_url, stream=True) as r:
+            r.raise_for_status()
+            with open(file_name, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+        print("✅ Archivo descargado exitosamente desde la API.")
+        return file_name
+    except Exception as e:
+        print(f"❌ Error al usar API fallback: {e}")
         return None
+
 
 # ====== Command Handlers ======
 

@@ -161,44 +161,60 @@ def fallback_download_youtube(video_id, file_format, user_id):
         return None
     except:
         return None
-    
+
 def fallback_download_pipedapi(video_id, file_format, user_id):
-    try:
-        api_url = f"https://pipedapi.kavin.rocks/streams/{video_id}"
-        response = requests.get(api_url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+    API_HOSTS = [
+        "https://pipedapi.kavin.rocks",
+        "https://pipedapi.adminforge.de",
+        "https://pipedapi.joom.social",
+        "https://pipedapi.lunar.icu",
+        "https://pipedapi.moomoo.me"
+    ]
 
-        if file_format == 'mp3':
-            audio_streams = data.get('audioStreams', [])
-            best_audio = max(audio_streams, key=lambda x: x.get('bitrate', 0)) if audio_streams else None
-            video_url = best_audio.get('url') if best_audio else None
-            ext = 'webm'
-        else:
-            video_streams = [
-                v for v in data.get('videoStreams', [])
-                if v.get('container') == 'mp4'
-            ]
-            best_video = max(video_streams, key=lambda x: x.get('bitrate', 0)) if video_streams else None
-            video_url = best_video.get('url') if best_video else None
-            ext = 'mp4'
+    for host in API_HOSTS:
+        try:
+            print(f"🌐 Intentando fallback con PipedAPI: {host}")
+            api_url = f"{host}/streams/{video_id}"
+            response = requests.get(api_url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
 
-        if video_url:
-            filename = f"{user_id}_{uuid.uuid4()}.{ext}"
-            with requests.get(video_url, stream=True) as r:
-                r.raise_for_status()
-                with open(filename, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
             if file_format == 'mp3':
-                mp3_name = filename.replace(".webm", ".mp3")
-                mp3_path = convert_to_mp3(filename, mp3_name)
-                os.remove(filename)
-                return mp3_path
-            return filename
-    except Exception as e:
-        print(f"❌ pipedapi fallback failed: {e}")
-        return None
+                audio_streams = data.get('audioStreams', [])
+                best_audio = max(audio_streams, key=lambda x: x.get('bitrate', 0)) if audio_streams else None
+                video_url = best_audio.get('url') if best_audio else None
+                ext = 'webm'
+            else:
+                video_streams = [
+                    v for v in data.get('videoStreams', [])
+                    if v.get('container') == 'mp4'
+                ]
+                best_video = max(video_streams, key=lambda x: x.get('bitrate', 0)) if video_streams else None
+                video_url = best_video.get('url') if best_video else None
+                ext = 'mp4'
+
+            if video_url:
+                filename = f"{user_id}_{uuid.uuid4()}.{ext}"
+                with requests.get(video_url, stream=True) as r:
+                    r.raise_for_status()
+                    with open(filename, 'wb') as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                if file_format == 'mp3':
+                    mp3_name = filename.replace(".webm", ".mp3")
+                    mp3_path = convert_to_mp3(filename, mp3_name)
+                    os.remove(filename)
+                    print(f"✅ Fallback PipedAPI exitoso desde {host}")
+                    return mp3_path
+                print(f"✅ Fallback PipedAPI exitoso desde {host}")
+                return filename
+        except Exception as e:
+            print(f"⚠️ Falló con {host}: {e}")
+            continue
+
+    print("❌ Todos los PipedAPI fallaron.")
+    return None
+
 
 def download_content(url, user_id, file_format):
     import re

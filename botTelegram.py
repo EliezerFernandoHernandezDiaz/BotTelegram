@@ -253,7 +253,6 @@ async def tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Has seleccionado TikTok. Ahora envía un enlace válido de TikTok.")
 
 # ====== Download Handler ======
-
 async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     user_id = update.message.from_user.id
@@ -321,6 +320,26 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("❌ No se pudo descargar el video de TikTok.")
 
+    else:
+        await update.message.reply_text("⚠️ No reconozco el enlace. Asegúrate de que sea un link válido de YouTube o TikTok.")
+
+
+
+        if file_path:
+            try:
+                reencoded_path = reencode_video_for_telegram(file_path)
+                if os.path.getsize(reencoded_path) > 50 * 1024 * 1024:
+                    await update.message.reply_text("⚠️ El video es demasiado grande para enviar por Telegram.")
+                    return
+                await context.bot.send_video(chat_id=update.effective_chat.id, video=open(reencoded_path, 'rb'))
+            finally:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                if os.path.exists(reencoded_path) and reencoded_path != file_path:
+                    os.remove(reencoded_path)
+        else:
+            await update.message.reply_text("❌ No se pudo descargar el video de TikTok.")
+
 # ====== Main ======
 
 def main():
@@ -332,5 +351,7 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_handler))
     application.run_polling(drop_pending_updates=True)
 
+    # Ejecutar el bot (polling)
+    application.run_polling(drop_pending_updates=True)
 if __name__ == "__main__":
     main()

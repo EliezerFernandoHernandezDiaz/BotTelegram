@@ -161,6 +161,44 @@ def fallback_download_youtube(video_id, file_format, user_id):
         return None
     except:
         return None
+    
+def fallback_download_pipedapi(video_id, file_format, user_id):
+    try:
+        api_url = f"https://pipedapi.kavin.rocks/streams/{video_id}"
+        response = requests.get(api_url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        if file_format == 'mp3':
+            audio_streams = data.get('audioStreams', [])
+            best_audio = max(audio_streams, key=lambda x: x.get('bitrate', 0)) if audio_streams else None
+            video_url = best_audio.get('url') if best_audio else None
+            ext = 'webm'
+        else:
+            video_streams = [
+                v for v in data.get('videoStreams', [])
+                if v.get('container') == 'mp4'
+            ]
+            best_video = max(video_streams, key=lambda x: x.get('bitrate', 0)) if video_streams else None
+            video_url = best_video.get('url') if best_video else None
+            ext = 'mp4'
+
+        if video_url:
+            filename = f"{user_id}_{uuid.uuid4()}.{ext}"
+            with requests.get(video_url, stream=True) as r:
+                r.raise_for_status()
+                with open(filename, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            if file_format == 'mp3':
+                mp3_name = filename.replace(".webm", ".mp3")
+                mp3_path = convert_to_mp3(filename, mp3_name)
+                os.remove(filename)
+                return mp3_path
+            return filename
+    except Exception as e:
+        print(f"❌ pipedapi fallback failed: {e}")
+        return None
 
 def download_content(url, user_id, file_format):
     import re
@@ -205,16 +243,25 @@ def download_content(url, user_id, file_format):
             print(f"⚠️ yt-dlp falló con client '{client_type}': {e}")
             return None
 
-    # 👉 Intento 1: android
     file_path = try_download('android')
-
-    # 👉 Intento 2: tvhtml5 si el primero falla
-    if not file_path:
+    if file_path:
+        print("✅ Descargado con yt-dlp usando client 'android'")
+    else:
         file_path = try_download('tvhtml5')
+        if file_path:
+            print("✅ Descargado con yt-dlp usando client 'tvhtml5'")
 
-    # 👉 Fallback con API externa si todos fallan
     if not file_path and video_id:
-        return fallback_download_youtube(video_id, file_format, user_id)
+        file_path = fallback_download_youtube(video_id, file_format, user_id)
+        if file_path:
+            print("✅ Descargado con fallback RapidAPI (ytstream)")
+
+    if not file_path and video_id:
+        file_path = fallback_download_pipedapi(video_id, file_format, user_id)
+        if file_path:
+            print("✅ Descargado con fallback PipedAPI")
+        else:
+            print("❌ Todos los métodos fallaron")
 
     return file_path
 

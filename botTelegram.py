@@ -156,6 +156,18 @@ def download_tiktok_video(url, user_id):
 
 # ====== YouTube Functions ======
 
+def convert_to_mp3(input_file, output_file):
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-i", input_file,
+            "-vn", "-ar", "44100", "-ac", "2",
+            "-b:a", "192k", output_file
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        return output_file
+    except Exception as e:
+        print(f"❌ Error al convertir a mp3: {e}")
+        return input_file
+
 def fallback_download_youtube(video_id, file_format, user_id):
     print("🔄 Intentando fallback con API externa...")
     try:
@@ -164,27 +176,53 @@ def fallback_download_youtube(video_id, file_format, user_id):
             params={"id": video_id},
             headers={
               "X-RapidAPI-Key": "c987832c40msh8923556ddd5a6a4p1c1c87jsn3cd43aca712e",
-                "X-RapidAPI-Host": "ytstream-download-youtube-videos.p.rapidapi.com"
+              "X-RapidAPI-Host": "ytstream-download-youtube-videos.p.rapidapi.com"
             }
         )
         response.raise_for_status()
         data = response.json()
-        print("📦 Respuesta API:", data)
+        print("📦 Respuesta API:", json.dumps(data, indent=2)[:1000])  # Mostrar parte útil del JSON
 
         if file_format == 'mp3':
-            video_url = data.get('link', {}).get('audio', {}).get('mp3', {}).get('url')
-        else:
-            video_url = data.get('link', {}).get('mp4', {}).get('url')
+            # Buscar el stream de audio de mejor calidad (orden: 251 > 250 > 249)
+            for itag in ['251', '250', '249']:
+                audio_obj = next(
+                    (a for a in data.get('link', {}).get('audio', {}).values() if a.get('itag') == itag),
+                    None
+                )
+                if audio_obj and 'url' in audio_obj:
+                    video_url = audio_obj['url']
+                    break
+            else:
+                video_url = None
+
+        else:  # MP4
+            video_streams = [
+                v for v in data.get('link', {}).get('mp4', {}).values()
+                if v.get('url') and v.get('itag') and v.get('mimeType', '').startswith("video/")
+            ]
+            # Elegir el de mayor bitrate
+            video_streams.sort(key=lambda x: x.get('bitrate', 0), reverse=True)
+            video_url = video_streams[0]['url'] if video_streams else None
 
         if video_url:
-            filename = f"{user_id}_{uuid.uuid4()}.{file_format}"
+            original_ext = 'webm' if file_format == 'mp3' else 'mp4'
+            filename = f"{user_id}_{uuid.uuid4()}.{original_ext}"
             with requests.get(video_url, stream=True) as r:
                 r.raise_for_status()
                 with open(filename, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
-            print("✅ Video descargado con fallback API")
-            return filename
+            print("✅ Archivo descargado con fallback API")
+
+            # Convertir a MP3 si es necesario
+            if file_format == "mp3" and filename.endswith(".webm"):
+                mp3_name = filename.replace(".webm", ".mp3")
+                mp3_path = convert_to_mp3(filename, mp3_name)
+                os.remove(filename)
+                return mp3_path
+            else:
+                return filename
         else:
             print("❌ No se encontró el enlace de descarga en la respuesta API")
             return None

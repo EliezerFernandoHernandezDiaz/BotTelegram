@@ -2,41 +2,26 @@ import os
 import uuid
 import requests
 import subprocess
+import json
+import shutil
 from urllib.parse import urlparse, urlunparse
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from yt_dlp import YoutubeDL
-import json
-import shutil, os
-
 
 # ====== Copiar cookies.txt si está disponible ======
 if os.path.exists("youtube_cookies.txt"):
     shutil.copy("youtube_cookies.txt", "/data/youtube_cookies.txt")
     print("✅ Archivo de cookies copiado correctamente.")
-
-    try:
-        with open("/data/youtube_cookies.txt", "r", encoding="utf-8") as f:
-            content = f.read()
-            print("🔍 Contenido de cookies:\n", content)
-            if "SID" in content:
-                print("✅ SID encontrado.")
-            else:
-                print("⚠️ SID no detectado en el archivo copiado.")
-    except Exception as e:
-        print(f"❌ Error leyendo cookies: {e}")
-
 else:
     print("❌ Archivo youtube_cookies.txt no encontrado.")
 
-# ====== TikTok Functions ======
-
+# ====== TikTok ======
 def resolve_tiktok_redirect(url):
     try:
         response = requests.head(url, allow_redirects=True, timeout=5)
         return response.url
-    except Exception as e:
-        print(f"⚠️ No se pudo resolver redirección de TikTok: {e}")
+    except:
         return url
 
 def sanitize_tiktok_url(raw_url):
@@ -46,7 +31,6 @@ def sanitize_tiktok_url(raw_url):
 def reencode_video_for_telegram(file_path):
     output_path = f"reencoded_{file_path}"
     try:
-        # Detectar si el archivo tiene pista de video
         result = subprocess.run(
             ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
              'stream=codec_type', '-of', 'json', file_path],
@@ -56,80 +40,47 @@ def reencode_video_for_telegram(file_path):
         )
         data = json.loads(result.stdout)
         has_video = bool(data.get("streams"))
-
-    except Exception as e:
-        print(f"⚠️ Error analizando video con ffprobe: {e}")
+    except:
         has_video = False
 
     try:
         if has_video:
-            print("🎞 El archivo tiene video, se recodifica por compatibilidad.")
             command = [
-                "ffmpeg", "-y",
-                "-i", file_path,
-                "-t", "60",  # cortar por si acaso
-                "-map", "0:v:0", "-map", "0:a:0",
-                "-c:v", "libx264",
-                "-c:a", "aac",
-                "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart",
+                "ffmpeg", "-y", "-i", file_path,
+                "-t", "60", "-map", "0:v:0", "-map", "0:a:0",
+                "-c:v", "libx264", "-c:a", "aac",
+                "-pix_fmt", "yuv420p", "-movflags", "+faststart",
                 output_path
             ]
-
         else:
-            print("📸 El archivo no tiene video. Se usará imagen repetida + audio.")
-
-            # Intentar extraer imagen del archivo original
-            image_temp = f"frame_{uuid.uuid4()}.jpg"
-            try:
-                subprocess.run([
-                    "ffmpeg", "-y", "-i", file_path,
-                    "-vframes", "1", "-q:v", "2", image_temp
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-            except:
-                print("⚠️ No se pudo extraer imagen, se usará fondo negro.")
-                image_temp = f"black_{uuid.uuid4()}.jpg"
-                subprocess.run([
-                    "ffmpeg", "-y", "-f", "lavfi",
-                    "-i", "color=black:s=1280x720:d=1",
-                    "-frames:v", "1",
-                    image_temp
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            image_temp = f"black_{uuid.uuid4()}.jpg"
+            subprocess.run([
+                "ffmpeg", "-y", "-f", "lavfi",
+                "-i", "color=black:s=1280x720:d=1",
+                "-frames:v", "1", image_temp
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
             command = [
-                "ffmpeg", "-y",
-                "-loop", "1",
-                "-i", image_temp,
-                "-i", file_path,
-                "-shortest",
-                "-c:v", "libx264",
-                "-c:a", "aac",
-                "-pix_fmt", "yuv420p",
-                "-tune", "stillimage",
-                "-movflags", "+faststart",
-                output_path
+                "ffmpeg", "-y", "-loop", "1", "-i", image_temp,
+                "-i", file_path, "-shortest",
+                "-c:v", "libx264", "-c:a", "aac",
+                "-pix_fmt", "yuv420p", "-tune", "stillimage",
+                "-movflags", "+faststart", output_path
             ]
 
         subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-
-        if 'image_temp' in locals() and os.path.exists(image_temp):
-            os.remove(image_temp)
-
         return output_path
-
-    except Exception as e:
-        print(f"❌ Error al recodificar: {e}")
+    except:
         return file_path
 
 def download_tiktok_video(url, user_id):
-    # ======== PRIMER INTENTO: RapidAPI ==========
     try:
         resolved_url = resolve_tiktok_redirect(url)
         clean_url = sanitize_tiktok_url(resolved_url)
 
         api_url = "https://tiktok-download-without-watermark.p.rapidapi.com/analysis"
         headers = {
-            "X-RapidAPI-Key": "c987832c40msh8923556ddd5a6a4p1c1c87jsn3cd43aca712e",  # <-- pegá aquí tu key
+            "X-RapidAPI-Key": "c987832c40msh8923556ddd5a6a4p1c1c87jsn3cd43aca712e",
             "X-RapidAPI-Host": "tiktok-download-without-watermark.p.rapidapi.com",
             "User-Agent": "Mozilla/5.0"
         }
@@ -147,15 +98,11 @@ def download_tiktok_video(url, user_id):
                 with open(filename, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
-            print("✅ Video descargado con RapidAPI")
             return filename
-
-    except Exception as e:
-        print(f"⚠️ RapidAPI falló: {e}")
+    except:
         return "TRY_TIKWM"
 
-# ====== YouTube Functions ======
-
+# ====== YouTube ======
 def convert_to_mp3(input_file, output_file):
     try:
         subprocess.run([
@@ -164,27 +111,22 @@ def convert_to_mp3(input_file, output_file):
             "-b:a", "192k", output_file
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
         return output_file
-    except Exception as e:
-        print(f"❌ Error al convertir a mp3: {e}")
+    except:
         return input_file
 
 def fallback_download_youtube(video_id, file_format, user_id):
-    print("🔄 Intentando fallback con API externa...")
     try:
         response = requests.get(
             "https://ytstream-download-youtube-videos.p.rapidapi.com/dl",
             params={"id": video_id},
             headers={
-              "X-RapidAPI-Key": "c987832c40msh8923556ddd5a6a4p1c1c87jsn3cd43aca712e",
-              "X-RapidAPI-Host": "ytstream-download-youtube-videos.p.rapidapi.com"
+                "X-RapidAPI-Key": "c987832c40msh8923556ddd5a6a4p1c1c87jsn3cd43aca712e",
+                "X-RapidAPI-Host": "ytstream-download-youtube-videos.p.rapidapi.com"
             }
         )
-        response.raise_for_status()
         data = response.json()
-        print("📦 Respuesta API:", json.dumps(data, indent=2)[:1000])  # Mostrar parte útil del JSON
 
         if file_format == 'mp3':
-            # Buscar el stream de audio de mejor calidad (orden: 251 > 250 > 249)
             for itag in ['251', '250', '249']:
                 audio_obj = next(
                     (a for a in data.get('link', {}).get('audio', {}).values() if a.get('itag') == itag),
@@ -195,40 +137,29 @@ def fallback_download_youtube(video_id, file_format, user_id):
                     break
             else:
                 video_url = None
-
-        else:  # MP4
+        else:
             video_streams = [
                 v for v in data.get('link', {}).get('mp4', {}).values()
-                if v.get('url') and v.get('itag') and v.get('mimeType', '').startswith("video/")
+                if v.get('url')
             ]
-            # Elegir el de mayor bitrate
             video_streams.sort(key=lambda x: x.get('bitrate', 0), reverse=True)
             video_url = video_streams[0]['url'] if video_streams else None
 
         if video_url:
-            original_ext = 'webm' if file_format == 'mp3' else 'mp4'
-            filename = f"{user_id}_{uuid.uuid4()}.{original_ext}"
+            ext = 'webm' if file_format == 'mp3' else 'mp4'
+            filename = f"{user_id}_{uuid.uuid4()}.{ext}"
             with requests.get(video_url, stream=True) as r:
-                r.raise_for_status()
                 with open(filename, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
-            print("✅ Archivo descargado con fallback API")
-
-            # Convertir a MP3 si es necesario
-            if file_format == "mp3" and filename.endswith(".webm"):
+            if file_format == 'mp3':
                 mp3_name = filename.replace(".webm", ".mp3")
                 mp3_path = convert_to_mp3(filename, mp3_name)
                 os.remove(filename)
                 return mp3_path
-            else:
-                return filename
-        else:
-            print("❌ No se encontró el enlace de descarga en la respuesta API")
-            return None
-
-    except Exception as e:
-        print(f"❌ Error al usar API fallback: {e}")
+            return filename
+        return None
+    except:
         return None
 
 def download_content(url, user_id, file_format):
@@ -252,134 +183,93 @@ def download_content(url, user_id, file_format):
             if file_format == 'mp3':
                 downloaded_file = downloaded_file.replace('.webm', '.mp3').replace('.m4a', '.mp3')
             return downloaded_file
-    
-    except Exception as e:
-        print(f"❌ yt-dlp falló: {e}")
-        # Extraer ID del video para fallback
+    except:
         import re
         match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url)
         video_id = match.group(1) if match else None
-
         if video_id:
             return fallback_download_youtube(video_id, file_format, user_id)
-        else:
-            print("❌ No se pudo extraer el ID del video para fallback.")
-            return None
+        return None
 
-
-# ====== Command Handlers ======
-
+# ====== Telegram Handlers ======
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "¡Hola! Este bot puede descargar:\n"
-        "🎧 MP3 de YouTube (/mp3)\n"
-        "🎬 MP4 de YouTube (/mp4)\n"
-        "🎥 TikToks sin marca de agua (/tiktok)\n\n"
-        "Después de elegir el formato, envía el enlace."
+        "Hola! Este bot descarga videos de YouTube y TikTok.\n\n" +
+        "/mp3 - Descargar MP3 de YouTube\n" +
+        "/mp4 - Descargar MP4 de YouTube\n" +
+        "/tiktok - Descargar video de TikTok"
     )
 
 async def mp3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['format'] = 'mp3'
-    await update.message.reply_text("Has seleccionado MP3. Ahora envía un enlace de YouTube.")
+    await update.message.reply_text("Envíame el link de YouTube para descargar el MP3.")
 
 async def mp4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['format'] = 'mp4'
-    await update.message.reply_text("Has seleccionado MP4. Ahora envía un enlace de YouTube.")
+    await update.message.reply_text("Envíame el link de YouTube para descargar el MP4.")
 
 async def tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['format'] = 'tiktok'
-    await update.message.reply_text("Has seleccionado TikTok. Ahora envía un enlace válido de TikTok.")
+    await update.message.reply_text("Envíame el link de TikTok para descargarlo sin marca de agua.")
 
-# ====== Download Handler ======
 async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     user_id = update.message.from_user.id
     file_format = context.user_data.get('format')
 
     if not file_format:
-        await update.message.reply_text("Por favor usa /mp3, /mp4 o /tiktok antes de enviar un enlace.")
+        await update.message.reply_text("Por favor, usa primero /mp3, /mp4 o /tiktok.")
         return
 
-    print("📩 URL recibida:", url)
-    print("🎛 Formato:", file_format)
-
     if "youtube.com" in url or "youtu.be" in url:
-        await update.message.reply_text("Descargando desde YouTube...")
+        await update.message.reply_text("Procesando YouTube...")
         file_path = download_content(url, user_id, file_format)
         if file_path:
-            try:
-                if os.path.getsize(file_path) > 50 * 1024 * 1024:
-                    await update.message.reply_text("⚠️ El archivo es demasiado grande para enviar por Telegram.")
-                    return
-                if file_format == 'mp3':
-                    await context.bot.send_audio(chat_id=update.effective_chat.id, audio=open(file_path, 'rb'))
-                else:
-                    await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
-            finally:
-                os.remove(file_path)
+            if os.path.getsize(file_path) > 50 * 1024 * 1024:
+                await update.message.reply_text("El archivo es demasiado grande para Telegram.")
+                return
+            if file_format == 'mp3':
+                await context.bot.send_audio(chat_id=update.effective_chat.id, audio=open(file_path, 'rb'))
+            else:
+                await context.bot.send_video(chat_id=update.effective_chat.id, video=open(file_path, 'rb'))
+            os.remove(file_path)
         else:
-            await update.message.reply_text("❌ No se pudo descargar el contenido.")
+            await update.message.reply_text("No se pudo descargar el contenido.")
 
-    elif ("tiktok.com" in url or "vm.tiktok.com" in url) and file_format == "tiktok":
-        await update.message.reply_text("Descargando video de TikTok sin marca de agua...")
+    elif "tiktok.com" in url or "vm.tiktok.com" in url:
+        await update.message.reply_text("Procesando TikTok...")
         file_path = download_tiktok_video(url, user_id)
-
         if file_path == "TRY_TIKWM":
-            await update.message.reply_text("⚠️ Hubo un problema con el servidor principal. Intentaremos nuevamente, por favor espera...")
+            await update.message.reply_text("Intentando otro servidor, espera un momento...")
             try:
                 response = requests.get("https://tikwm.com/api/", params={"url": url}, timeout=10)
-                response.raise_for_status()
                 data = response.json()
                 video_url = data.get("data", {}).get("play")
                 if video_url:
                     file_path = f"{user_id}_{uuid.uuid4()}.mp4"
                     with requests.get(video_url, stream=True) as r:
-                        r.raise_for_status()
                         with open(file_path, 'wb') as f:
                             for chunk in r.iter_content(chunk_size=8192):
                                 f.write(chunk)
-            except Exception as e:
-                print(f"❌ TikWM también falló: {e}")
-                await update.message.reply_text("❌ Lo sentimos, no se pudo descargar el video. Intenta más tarde.")
+            except:
+                await update.message.reply_text("No se pudo descargar el video.")
                 return
 
         if file_path:
-            try:
-                reencoded_path = reencode_video_for_telegram(file_path)
-                if os.path.getsize(reencoded_path) > 50 * 1024 * 1024:
-                    await update.message.reply_text("⚠️ El video es demasiado grande para enviar por Telegram.")
-                    return
-                await context.bot.send_video(chat_id=update.effective_chat.id, video=open(reencoded_path, 'rb'))
-            finally:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                if os.path.exists(reencoded_path) and reencoded_path != file_path:
-                    os.remove(reencoded_path)
+            reencoded_path = reencode_video_for_telegram(file_path)
+            if os.path.getsize(reencoded_path) > 50 * 1024 * 1024:
+                await update.message.reply_text("Video muy grande para Telegram.")
+                return
+            await context.bot.send_video(chat_id=update.effective_chat.id, video=open(reencoded_path, 'rb'))
+            os.remove(file_path)
+            if reencoded_path != file_path:
+                os.remove(reencoded_path)
         else:
-            await update.message.reply_text("❌ No se pudo descargar el video de TikTok.")
-
+            await update.message.reply_text("No se pudo procesar el video.")
     else:
-        await update.message.reply_text("⚠️ No reconozco el enlace. Asegúrate de que sea un link válido de YouTube o TikTok.")
-
-
-
-        if file_path:
-            try:
-                reencoded_path = reencode_video_for_telegram(file_path)
-                if os.path.getsize(reencoded_path) > 50 * 1024 * 1024:
-                    await update.message.reply_text("⚠️ El video es demasiado grande para enviar por Telegram.")
-                    return
-                await context.bot.send_video(chat_id=update.effective_chat.id, video=open(reencoded_path, 'rb'))
-            finally:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                if os.path.exists(reencoded_path) and reencoded_path != file_path:
-                    os.remove(reencoded_path)
-        else:
-            await update.message.reply_text("❌ No se pudo descargar el video de TikTok.")
+        await update.message.reply_text("Link no reconocido. Solo YouTube o TikTok")
 
 # ====== Main ======
-
 def main():
     application = Application.builder().token("7693751923:AAH9i-62eI0I4lrYWs2eNKy7hF8Vi5c2EUA").build()
     application.add_handler(CommandHandler("start", start))
@@ -389,7 +279,5 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_handler))
     application.run_polling(drop_pending_updates=True)
 
-    # Ejecutar el bot (polling)
-    application.run_polling(drop_pending_updates=True)
 if __name__ == "__main__":
     main()

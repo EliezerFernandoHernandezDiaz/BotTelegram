@@ -170,20 +170,35 @@ def download_content(url, user_id, file_format):
             else 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',
             'outtmpl': output_name,
             'cookiefile': '/data/youtube_cookies.txt',
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'http_headers': {
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+            },
+            'geo_bypass': True,
+            'nocheckcertificate': True,
+            'player_client': 'android',
+            'quiet': False,
         }
+
         if file_format == 'mp3':
             ydl_opts['postprocessors'] = [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
                 'preferredquality': '192',
             }]
+
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             downloaded_file = ydl.prepare_filename(info)
+
             if file_format == 'mp3':
                 downloaded_file = downloaded_file.replace('.webm', '.mp3').replace('.m4a', '.mp3')
+
             return downloaded_file
-    except:
+
+    except Exception as e:
+        print(f"❌ yt-dlp falló: {e}")
         import re
         match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url)
         video_id = match.group(1) if match else None

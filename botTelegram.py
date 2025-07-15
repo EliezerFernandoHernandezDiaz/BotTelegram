@@ -3,13 +3,18 @@ import uuid
 import time
 import random
 import logging
+import asyncio
 from functools import wraps
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.error import Conflict, NetworkError, TimedOut
 from yt_dlp import YoutubeDL
 
 # Configurar logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 # User agents para rotar y evitar detección de bot
@@ -158,8 +163,8 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    print("URL recibida:", url)
-    print("Formato seleccionado:", file_format)
+    logger.info(f"URL recibida: {url}")
+    logger.info(f"Formato seleccionado: {file_format}")
 
     # Mensaje de procesamiento
     processing_msg = await update.message.reply_text(
@@ -171,7 +176,7 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_path = download_content(url, user_id, file_format)
         
         if file_path and os.path.exists(file_path):
-            print("Archivo descargado:", file_path)
+            logger.info(f"Archivo descargado: {file_path}")
             
             # Verificar tamaño del archivo
             file_size = os.path.getsize(file_path)
@@ -235,26 +240,91 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "❌ Error al descargar el video. Verifica que el enlace sea válido y que el video esté disponible."
             )
 
+# Handler para errores
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja errores del bot"""
+    logger.error(f"Update {update} caused error {context.error}")
+    
+    # Manejo específico de errores 409
+    if isinstance(context.error, Conflict):
+        logger.warning("Error 409: Conflicto con otra instancia del bot")
+        await asyncio.sleep(10)  # Esperar antes de continuar
+        return
+    
+    # Otros errores de red
+    if isinstance(context.error, (NetworkError, TimedOut)):
+        logger.warning(f"Error de red: {context.error}")
+        return
+
+# Función para limpiar webhooks antes de iniciar
+async def clear_webhook(token):
+    """Limpia cualquier webhook existente"""
+    import aiohttp
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"https://api.telegram.org/bot{token}/deleteWebhook"
+            async with session.post(url) as response:
+                if response.status == 200:
+                    logger.info("Webhook eliminado exitosamente")
+                else:
+                    logger.warning(f"No se pudo eliminar webhook: {response.status}")
+    except Exception as e:
+        logger.error(f"Error al limpiar webhook: {e}")
+
 # Configuración principal del bot
-def main():
+async def main():
     # Obtener token
     token = os.getenv("BOT_TOKEN")
     if not token:
-        print("❌ Error: BOT_TOKEN no encontrado en las variables de entorno")
+        logger.error("❌ Error: BOT_TOKEN no encontrado en las variables de entorno")
         return
     
-    # Crear aplicación
+    # Limpiar webhook antes de iniciar
+    await clear_webhook(token)
+    
+    # Esperar un poco para asegurar que no hay conflictos
+    await asyncio.sleep(5)
+    
+    # Crear aplicación con configuración especial para Render
     application = Application.builder().token(token).build()
+    
+    # Agregar handler de errores
+    application.add_error_handler(error_handler)
 
-    # Agregar handlers
+    # Agregar handlers de comandos
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("mp3", mp3))
     application.add_handler(CommandHandler("mp4", mp4))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_handler))
 
-    # Ejecutar bot
-    logger.info("🚀 Bot iniciado correctamente")
-    application.run_polling(drop_pending_updates=True)
+    # Configuración especial para evitar conflictos
+    logger.info("🚀 Iniciando bot...")
+    
+    try:
+        # Iniciar con configuración especial
+        await application.initialize()
+        await application.start()
+        
+        # Usar polling con configuración especial
+        await application.updater.start_polling(
+            drop_pending_updates=True,
+            poll_interval=2.0,
+            timeout=30,
+            bootstrap_retries=5
+        )
+        
+        logger.info("✅ Bot iniciado correctamente")
+        
+        # Mantener el bot corriendo
+        await application.updater.idle()
+        
+    except Exception as e:
+        logger.error(f"Error al iniciar el bot: {e}")
+    finally:
+        # Limpiar recursos
+        await application.stop()
+        await application.shutdown()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

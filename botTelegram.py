@@ -94,7 +94,9 @@ async def download_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Configuración principal del bot
 def main():
     # Crea la aplicación
-    application = Application.builder().token("7693751923:AAH9i-62eI0I4lrYWs2eNKy7hF8Vi5c2EUA").build()
+    import os 
+    token= os.getenv("BOT_TOKEN")
+    application= Application.builder().token(token).build()
 
     # Agrega los comandos y handlers
     application.add_handler(CommandHandler("start", start))

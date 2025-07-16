@@ -257,18 +257,11 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 # Función para limpiar webhooks antes de iniciar
-async def clear_webhook(token):
+async def clear_webhook(application):
     """Limpia cualquier webhook existente"""
-    import aiohttp
-    
     try:
-        async with aiohttp.ClientSession() as session:
-            url = f"https://api.telegram.org/bot{token}/deleteWebhook"
-            async with session.post(url) as response:
-                if response.status == 200:
-                    logger.info("Webhook eliminado exitosamente")
-                else:
-                    logger.warning(f"No se pudo eliminar webhook: {response.status}")
+        await application.bot.delete_webhook()
+        logger.info("Webhook eliminado exitosamente")
     except Exception as e:
         logger.error(f"Error al limpiar webhook: {e}")
 
@@ -280,13 +273,7 @@ async def main():
         logger.error("❌ Error: BOT_TOKEN no encontrado en las variables de entorno")
         return
     
-    # Limpiar webhook antes de iniciar
-    await clear_webhook(token)
-    
-    # Esperar un poco para asegurar que no hay conflictos
-    await asyncio.sleep(5)
-    
-    # Crear aplicación con configuración especial para Render
+    # Crear aplicación
     application = Application.builder().token(token).build()
     
     # Agregar handler de errores
@@ -298,33 +285,27 @@ async def main():
     application.add_handler(CommandHandler("mp4", mp4))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_handler))
 
-    # Configuración especial para evitar conflictos
+    # Limpiar webhook antes de iniciar
+    await clear_webhook(application)
+    
+    # Esperar un poco para asegurar que no hay conflictos
+    await asyncio.sleep(2)
+    
     logger.info("🚀 Iniciando bot...")
     
     try:
-        # Iniciar con configuración especial
-        await application.initialize()
-        await application.start()
-        
-        # Usar polling con configuración especial
-        await application.updater.start_polling(
+        # Usar run_polling() que es la forma moderna
+        await application.run_polling(
             drop_pending_updates=True,
             poll_interval=2.0,
             timeout=30,
-            bootstrap_retries=5
+            bootstrap_retries=5,
+            stop_signals=None  # Importante para Render
         )
-        
-        logger.info("✅ Bot iniciado correctamente")
-        
-        # Mantener el bot corriendo
-        await application.updater.idle()
         
     except Exception as e:
         logger.error(f"Error al iniciar el bot: {e}")
-    finally:
-        # Limpiar recursos
-        await application.stop()
-        await application.shutdown()
+        raise
 
 if __name__ == "__main__":
     asyncio.run(main())
